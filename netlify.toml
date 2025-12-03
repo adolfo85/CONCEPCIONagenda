@@ -1,0 +1,44 @@
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/dentists/:id"
+  to = "/.netlify/functions/dentists"
+  status = 200
+
+[[redirects]]
+  from = "/api/dentists"
+  to = "/.netlify/functions/dentists"
+  status = 200
+
+[[redirects]]
+  from = "/api/patients/:id"
+  to = "/.netlify/functions/patients"
+  status = 200
+
+[[redirects]]
+  from = "/api/patients"
+  to = "/.netlify/functions/patients"
+  status = 200
+
+[[redirects]]
+  from = "/api/appointments/:id"
+  to = "/.netlify/functions/appointments"
+  status = 200
+
+[[redirects]]
+  from = "/api/appointments"
+  to = "/.netlify/functions/appointments"
+  status = 200
+
+[[redirects]]
+  from = "/api/service-types"
+  to = "/.netlify/functions/service-types"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
