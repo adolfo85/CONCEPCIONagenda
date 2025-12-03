@@ -1,0 +1,5 @@
+{
+  "name": "OrtoTrack Pro",
+  "description": "Sistema integral de gestión para pacientes de ortodoncia. Permite seguimiento clínico, control de pagos y evolución de tratamiento.",
+  "requestFramePermissions": []
+}
