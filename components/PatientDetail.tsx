@@ -317,7 +317,7 @@ const PatientDetail: React.FC = () => {
 
   const lastControl = useMemo(() => {
     if (!patient || patient.records.length === 0) return 'Sin controles';
-    return new Date(patient.records[0].date).toLocaleDateString();
+    return new Date(patient.records[0].date + 'T00:00:00').toLocaleDateString();
   }, [patient]);
 
   if (loading) return <div className="p-10 text-center text-slate-500">Cargando ficha...</div>;
@@ -516,7 +516,7 @@ const PatientDetail: React.FC = () => {
                     return (
                       <tr key={record.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-6 py-4 text-slate-700 whitespace-nowrap font-medium align-top">
-                          {new Date(record.date).toLocaleDateString()}
+                          {new Date(record.date + 'T00:00:00').toLocaleDateString()}
                         </td>
 
                         {isOrthodontics ? (

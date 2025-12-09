@@ -152,7 +152,7 @@ const PatientList: React.FC = () => {
     // Sort desc just to be sure
     const sortedRecords = [...patient.records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const lastRecord = sortedRecords[0];
-    const lastDate = new Date(lastRecord.date);
+    const lastDate = new Date(lastRecord.date + 'T00:00:00');
 
     // Calculate days passed
     const now = new Date();
