@@ -2,18 +2,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Edit2, Trash2, Save, FileText, DollarSign, Clock, Settings, Wallet } from 'lucide-react';
-import { Patient, ClinicalRecord, ArchWireType, Dentist, ServiceType, ToothSurface, ToothDetail } from '../types';
-import { getServiceTypes, addServiceType, getPatients, updatePatient, generateId, getDentists } from '../services/storage';
+import { Patient, ClinicalRecord, ArchWireType, ServiceType, ToothSurface, ToothDetail } from '../types';
+import { generateId } from '../services/storage';
+import { usePatients, useDentists, useServiceTypes, useUpdatePatient, useAddServiceType } from '../services/queries';
 import { ARCH_WIRES, DEFAULT_SERVICE_TYPES as SERVICE_TYPES, TOOTH_SURFACES, TOOTH_NUMBERS } from '../constants';
 
 const PatientDetail: React.FC = () => {
-  // Service types (prestaciones) state
-  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-
   const { id } = useParams<{ id: string }>();
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [dentist, setDentist] = useState<Dentist | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // React Query hooks for data fetching
+  const { data: allPatients = [], isLoading: loadingPatients } = usePatients();
+  const { data: allDentists = [], isLoading: loadingDentists } = useDentists();
+  const { data: serviceTypes = [], isLoading: loadingServiceTypes } = useServiceTypes();
+
+  // Mutation hooks
+  const updatePatientMutation = useUpdatePatient();
+  const addServiceTypeMutation = useAddServiceType();
+
+  // Derived data from cache
+  const patient = useMemo(() => allPatients.find(p => p.id === id) || null, [allPatients, id]);
+  const dentist = useMemo(() => {
+    if (!patient) return null;
+    return allDentists.find(d => d.id === patient.dentistId) || null;
+  }, [allDentists, patient]);
+
+  const loading = loadingPatients || loadingDentists || loadingServiceTypes;
 
   // Edit Patient Info State
   const [isEditingInfo, setIsEditingInfo] = useState(false);
@@ -56,33 +69,17 @@ const PatientDetail: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState<string | null>(null);
 
+  // Initialize edit form when patient data loads
   useEffect(() => {
-    // Load initial data
-    const loadData = async () => {
-      const types = await getServiceTypes();
-      setServiceTypes(types);
+    if (patient) {
+      setEditName(patient.name);
+      setEditPhone(patient.phone);
+      setNewInstallationTotal(patient.installationTotal ? patient.installationTotal.toString() : '');
+    }
+  }, [patient]);
 
-      const allPatients = await getPatients();
-      const found = allPatients.find(p => p.id === id);
-      if (found) {
-        setPatient(found);
-        setEditName(found.name);
-        setEditPhone(found.phone);
-        setNewInstallationTotal(found.installationTotal ? found.installationTotal.toString() : '');
-
-        // Load dentist to determine specialty
-        const allDentists = await getDentists();
-        const foundDentist = allDentists.find(d => d.id === found.dentistId);
-        setDentist(foundDentist || null);
-      }
-      setLoading(false);
-    };
-    loadData();
-  }, [id]);
-
-  const savePatientChanges = async (updatedPatient: Patient) => {
-    await updatePatient(updatedPatient);
-    setPatient(updatedPatient);
+  const savePatientChanges = (updatedPatient: Patient) => {
+    updatePatientMutation.mutate(updatedPatient);
   };
 
   const handleUpdateInfo = () => {
@@ -769,12 +766,10 @@ const PatientDetail: React.FC = () => {
                         />
                         <button
                           type="button"
-                          onClick={async () => {
+                          onClick={() => {
                             const trimmed = newServiceInput.trim();
                             if (trimmed && !serviceTypes.includes(trimmed as ServiceType)) {
-                              await addServiceType(trimmed);
-                              const updated = [...serviceTypes, trimmed as ServiceType];
-                              setServiceTypes(updated);
+                              addServiceTypeMutation.mutate(trimmed);
                               setNewServiceInput('');
                               setNewServiceType(trimmed as ServiceType);
                             }

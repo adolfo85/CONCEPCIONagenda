@@ -1,12 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Plus, Edit2, Trash2, ChevronRight, Stethoscope, Activity } from 'lucide-react';
 import { Dentist, SpecialtyType } from '../types';
-import { getDentists, createDentist, updateDentist, deleteDentist, generateId } from '../services/storage';
+import { generateId } from '../services/storage';
+import { useDentists, useCreateDentist, useUpdateDentist, useDeleteDentist } from '../services/queries';
 
 const LandingPage: React.FC = () => {
-  const [dentists, setDentists] = useState<Dentist[]>([]);
+  const { data: dentists = [], isLoading } = useDentists();
+  const createDentistMutation = useCreateDentist();
+  const updateDentistMutation = useUpdateDentist();
+  const deleteDentistMutation = useDeleteDentist();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -15,14 +20,6 @@ const LandingPage: React.FC = () => {
   // Delete Confirmation State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [dentistToDelete, setDentistToDelete] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadDentists = async () => {
-      const data = await getDentists();
-      setDentists(data);
-    };
-    loadDentists();
-  }, []);
 
   const handleSaveDentist = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,8 +30,7 @@ const LandingPage: React.FC = () => {
       const dentistToUpdate = dentists.find(d => d.id === editingId);
       if (dentistToUpdate) {
         const updatedDentist = { ...dentistToUpdate, name, specialty };
-        await updateDentist(updatedDentist);
-        setDentists(prev => prev.map(d => d.id === editingId ? updatedDentist : d));
+        updateDentistMutation.mutate(updatedDentist);
       }
     } else {
       // Create
@@ -43,8 +39,7 @@ const LandingPage: React.FC = () => {
         name: name,
         specialty: specialty
       };
-      await createDentist(newDentist);
-      setDentists(prev => [...prev, newDentist]);
+      createDentistMutation.mutate(newDentist);
     }
     closeModal();
   };
@@ -75,8 +70,7 @@ const LandingPage: React.FC = () => {
   const confirmDeleteDentist = async () => {
     if (!dentistToDelete) return;
 
-    await deleteDentist(dentistToDelete);
-    setDentists(prev => prev.filter(d => d.id !== dentistToDelete));
+    deleteDentistMutation.mutate(dentistToDelete);
 
     setShowDeleteConfirm(false);
     setDentistToDelete(null);
@@ -97,6 +91,11 @@ const LandingPage: React.FC = () => {
   // Filter dentists by specialty
   const orthodontists = dentists.filter(d => !d.specialty || d.specialty === 'orthodontics');
   const generalDentists = dentists.filter(d => d.specialty === 'general');
+
+  if (isLoading) {
+    return <div className="p-10 text-center text-slate-500">Cargando profesionales...</div>;
+  }
+
 
   const renderDentistCard = (dentist: Dentist) => (
     <Link

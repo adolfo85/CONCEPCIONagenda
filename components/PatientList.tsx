@@ -1,14 +1,47 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Search, UserPlus, Phone, Calendar, ChevronRight, Trash2, ArrowLeft, Clock, AlertCircle, X } from 'lucide-react';
-import { Patient, Dentist, Appointment } from '../types';
-import { getPatients, createPatient, deletePatient, generateId, getDentists, getAppointments, createAppointment, deleteAppointment } from '../services/storage';
+import { Patient, Appointment } from '../types';
+import { generateId } from '../services/storage';
+import {
+  usePatients,
+  useDentists,
+  useAppointments,
+  useCreatePatient,
+  useDeletePatient,
+  useCreateAppointment,
+  useDeleteAppointment
+} from '../services/queries';
 
 const PatientList: React.FC = () => {
   const { dentistId } = useParams<{ dentistId: string }>();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [dentist, setDentist] = useState<Dentist | null>(null);
+
+  // React Query hooks for data fetching
+  const { data: allPatients = [], isLoading: loadingPatients } = usePatients();
+  const { data: allDentists = [], isLoading: loadingDentists } = useDentists();
+  const { data: allAppointments = [], isLoading: loadingAppointments } = useAppointments();
+
+  // Mutation hooks
+  const createPatientMutation = useCreatePatient();
+  const deletePatientMutation = useDeletePatient();
+  const createAppointmentMutation = useCreateAppointment();
+  const deleteAppointmentMutation = useDeleteAppointment();
+
+  // Derived data from cache
+  const patients = useMemo(() =>
+    allPatients.filter(p => p.dentistId === dentistId),
+    [allPatients, dentistId]
+  );
+  const dentist = useMemo(() =>
+    allDentists.find(d => d.id === dentistId) || null,
+    [allDentists, dentistId]
+  );
+  const appointments = useMemo(() =>
+    allAppointments.filter(a => a.dentistId === dentistId),
+    [allAppointments, dentistId]
+  );
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -21,7 +54,6 @@ const PatientList: React.FC = () => {
   const [newPhone, setNewPhone] = useState('');
 
   // Agenda State
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [showAgenda, setShowAgenda] = useState(false);
   const [agendaDate, setAgendaDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -32,24 +64,7 @@ const PatientList: React.FC = () => {
   const [appointmentTime, setAppointmentTime] = useState('09:00');
   const [appointmentDuration, setAppointmentDuration] = useState(30);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const allPatients = await getPatients();
-      const dentists = await getDentists();
-
-      // Filter patients for this dentist
-      if (dentistId) {
-        setPatients(allPatients.filter(p => p.dentistId === dentistId));
-        const currentDentist = dentists.find(d => d.id === dentistId);
-        setDentist(currentDentist || null);
-
-        // Load appointments for this dentist
-        const allAppointments = await getAppointments();
-        setAppointments(allAppointments.filter(a => a.dentistId === dentistId));
-      }
-    };
-    loadData();
-  }, [dentistId]);
+  const isLoading = loadingPatients || loadingDentists || loadingAppointments;
 
   const handleAddPatient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,11 +79,8 @@ const PatientList: React.FC = () => {
       records: []
     };
 
-    // Save to DB
-    await createPatient(newPatient);
-
-    // Update local state
-    setPatients(prev => [...prev, newPatient]);
+    // Save via mutation (cache is updated automatically)
+    createPatientMutation.mutate(newPatient);
 
     // Reset and Close
     setNewName('');
@@ -85,10 +97,7 @@ const PatientList: React.FC = () => {
   const confirmDeletePatient = async () => {
     if (!patientToDelete) return;
 
-    await deletePatient(patientToDelete);
-
-    // Update local state
-    setPatients(prev => prev.filter(p => p.id !== patientToDelete));
+    deletePatientMutation.mutate(patientToDelete);
 
     // Close modal
     setShowDeleteConfirm(false);
@@ -125,10 +134,7 @@ const PatientList: React.FC = () => {
       duration: appointmentDuration
     };
 
-    await createAppointment(newAppointment);
-
-    // Update local state
-    setAppointments(prev => [...prev, newAppointment]);
+    createAppointmentMutation.mutate(newAppointment);
     setIsAppointmentModalOpen(false);
     setSelectedPatientForAppointment(null);
   };
@@ -136,10 +142,7 @@ const PatientList: React.FC = () => {
   const handleDeleteAppointment = async (id: string) => {
     if (!window.confirm('¿Estás seguro de cancelar este turno?')) return;
 
-    await deleteAppointment(id);
-
-    // Update local state
-    setAppointments(prev => prev.filter(a => a.id !== id));
+    deleteAppointmentMutation.mutate(id);
   };
 
   const filteredAppointments = appointments
@@ -174,6 +177,10 @@ const PatientList: React.FC = () => {
   );
 
   if (!dentistId) return <div>Error: No se seleccionó profesional.</div>;
+
+  if (isLoading) {
+    return <div className="p-10 text-center text-slate-500">Cargando datos...</div>;
+  }
 
   return (
     <div className="space-y-6">
