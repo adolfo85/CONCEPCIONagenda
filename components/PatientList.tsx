@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Search, UserPlus, Phone, Calendar, ChevronRight, Trash2, ArrowLeft, Clock, AlertCircle, X } from 'lucide-react';
+import { Search, UserPlus, Phone, Calendar, ChevronRight, Trash2, ArrowLeft, Clock, AlertCircle, X, Filter, CheckCircle, XCircle } from 'lucide-react';
 import { Patient, Appointment } from '../types';
 import { generateId } from '../services/storage';
 import {
@@ -43,6 +43,7 @@ const PatientList: React.FC = () => {
   );
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'with-control' | 'without-control' | 'alphabetical' | 'by-last-control'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Delete Confirmation State
@@ -168,13 +169,60 @@ const PatientList: React.FC = () => {
     return {
       formattedDate: lastDate.toLocaleDateString(),
       isLate,
-      daysPassed: diffDays
+      daysPassed: diffDays,
+      lastDate
     };
   };
 
-  const filteredPatients = patients.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Check if patient has a control record in the current month
+  const hasControlThisMonth = (patient: Patient): boolean => {
+    if (!patient.records || patient.records.length === 0) return false;
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return patient.records.some(record => {
+      const recordDate = new Date(record.date + 'T00:00:00');
+      return recordDate.getMonth() === currentMonth && recordDate.getFullYear() === currentYear;
+    });
+  };
+
+  // Filter and sort patients based on filterType
+  const filteredPatients = useMemo(() => {
+    // First apply search filter
+    let result = patients.filter(p =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // Then apply type filter
+    switch (filterType) {
+      case 'with-control':
+        result = result.filter(p => hasControlThisMonth(p));
+        break;
+      case 'without-control':
+        result = result.filter(p => !hasControlThisMonth(p));
+        break;
+      case 'alphabetical':
+        result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'by-last-control':
+        result = [...result].sort((a, b) => {
+          const infoA = getLastControlInfo(a);
+          const infoB = getLastControlInfo(b);
+          if (!infoA && !infoB) return 0;
+          if (!infoA) return 1;
+          if (!infoB) return -1;
+          return infoB.lastDate.getTime() - infoA.lastDate.getTime();
+        });
+        break;
+      default:
+        // 'all' - no additional filtering or sorting
+        break;
+    }
+
+    return result;
+  }, [patients, searchTerm, filterType]);
 
   if (!dentistId) return <div>Error: No se seleccionó profesional.</div>;
 
@@ -266,18 +314,41 @@ const PatientList: React.FC = () => {
       ) : (
         /* Patient List View */
         <>
-          {/* Search Bar */}
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="text-slate-400" size={20} />
+          {/* Search Bar and Filters */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="text-slate-400" size={20} />
+              </div>
+              <input
+                type="text"
+                placeholder="Buscar por nombre..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm text-slate-800"
+              />
             </div>
-            <input
-              type="text"
-              placeholder="Buscar por nombre..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm text-slate-800"
-            />
+
+            {/* Filter Dropdown */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Filter className="text-slate-400" size={18} />
+              </div>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+                className="pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm cursor-pointer appearance-none min-w-[200px]"
+              >
+                <option value="all">Todos los pacientes</option>
+                <option value="with-control">✓ Con control este mes</option>
+                <option value="without-control">✗ Sin control este mes</option>
+                <option value="alphabetical">A-Z Orden alfabético</option>
+                <option value="by-last-control">📅 Por último control</option>
+              </select>
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <ChevronRight className="text-slate-400 rotate-90" size={16} />
+              </div>
+            </div>
           </div>
 
           {/* List */}
@@ -305,18 +376,35 @@ const PatientList: React.FC = () => {
                           </h3>
                         </div>
 
-                        <div className="mt-2 flex items-center gap-4 text-sm text-slate-500">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
                           <div className="flex items-center gap-1">
                             <Phone size={14} />
                             {patient.phone || 'Sin teléfono'}
                           </div>
-                          <div className={`flex items-center gap-1 ${controlInfo?.isLate ? 'text-red-600 font-medium' : ''}`}>
+                          <div
+                            className={`flex items-center gap-1 ${controlInfo?.isLate ? 'text-red-600 font-medium cursor-help' : ''}`}
+                            title={controlInfo?.isLate ? 'La fecha está en rojo porque han pasado más de 23 días desde el último control. Los controles de ortodoncia deben realizarse mensualmente.' : undefined}
+                          >
                             {controlInfo?.isLate ? <AlertCircle size={14} /> : <Clock size={14} />}
                             {controlInfo ? `Último: ${controlInfo.formattedDate}` : 'Sin controles'}
                           </div>
                           <div className="flex items-center gap-1 text-slate-400">
                             {patient.records.length} controles
                           </div>
+                          {/* Monthly Control Status Indicator */}
+                          {patient.records.length > 0 && (
+                            hasControlThisMonth(patient) ? (
+                              <div className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full text-xs">
+                                <CheckCircle size={12} />
+                                Realizó control este mes
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full text-xs">
+                                <XCircle size={12} />
+                                No realizó control este mes
+                              </div>
+                            )
+                          )}
                         </div>
                       </div>
 
