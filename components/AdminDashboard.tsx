@@ -128,45 +128,12 @@ const AdminDashboard: React.FC = () => {
         });
 
         return Array.from(earningsMap.entries()).map(([name, data]) => ({
-            name: name.split(' ')[0] + ' ' + (name.split(' ')[1] || ''),
+            name: name, // Full name
             installation: data.installation,
             control: data.control,
             total: data.installation + data.control
         }));
     }, [orthodonticPatients, orthodontists]);
-
-    // Calculate arch usage (counting only new placements)
-    const archUsage = useMemo(() => {
-        const archCount = new Map<string, number>();
-
-        filteredPatients.forEach(patient => {
-            // Sort records chronologically
-            const sortedRecords = [...patient.records].sort(
-                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-            );
-
-            let prevUpperArch: string | undefined;
-            let prevLowerArch: string | undefined;
-
-            sortedRecords.forEach(record => {
-                // Count upper arch only if different from previous
-                if (record.upperArch && record.upperArch !== prevUpperArch) {
-                    archCount.set(record.upperArch, (archCount.get(record.upperArch) || 0) + 1);
-                    prevUpperArch = record.upperArch;
-                }
-
-                // Count lower arch only if different from previous
-                if (record.lowerArch && record.lowerArch !== prevLowerArch) {
-                    archCount.set(record.lowerArch, (archCount.get(record.lowerArch) || 0) + 1);
-                    prevLowerArch = record.lowerArch;
-                }
-            });
-        });
-
-        return Array.from(archCount.entries())
-            .map(([arch, count]) => ({ arch, count }))
-            .sort((a, b) => b.count - a.count);
-    }, [filteredPatients]);
 
     // Summary statistics
     const stats = useMemo(() => {
@@ -177,17 +144,29 @@ const AdminDashboard: React.FC = () => {
         let totalControls = 0;
         let controlsThisMonth = 0;
 
+        // Monthly specific stats
+        let monthlyControlEarnings = 0;
+        let monthlyInstallationEarningsRaw = 0;
+        let monthlyDebits = 0; // We might need to track debits per month, but currently debits are per patient/installation. 
+        // Assuming debit applies to the installation month or generally. 
+        // For now, let's just show total earnings for the month based on payment dates.
+
         filteredPatients.forEach(patient => {
-            // Add up debits from patients
+            // Add up debits from patients (Total)
             totalDebits += patient.installationDebit || 0;
 
             patient.records.forEach(record => {
-                controlEarnings += record.paymentAmount || 0;
-                installationEarningsRaw += record.installationPayment || 0;
+                const amount = (record.paymentAmount || 0);
+                const instAmount = (record.installationPayment || 0);
+
+                controlEarnings += amount;
+                installationEarningsRaw += instAmount;
                 totalControls++;
 
                 if (record.date && record.date.startsWith(currentMonth)) {
                     controlsThisMonth++;
+                    monthlyControlEarnings += amount;
+                    monthlyInstallationEarningsRaw += instAmount;
                 }
             });
         });
@@ -195,13 +174,23 @@ const AdminDashboard: React.FC = () => {
         const installationEarnings = Math.max(installationEarningsRaw - totalDebits, 0);
         const totalEarnings = controlEarnings + installationEarnings;
 
+        // For monthly earnings, we don't easily know when the debit was applied. 
+        // If we assume debit is applied at installation time, we'd need to know installation date.
+        // For simplicity and safety, we'll show gross monthly earnings for now, or subtract proportional debit?
+        // Let's just show gross for monthly to avoid negative confusion unless we track debit date.
+        // OR: The user wants "Ganancias Mensuales". 
+        const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsRaw;
+
         return {
             totalPatients: filteredPatients.length,
             totalEarnings,
             controlEarnings,
             installationEarnings,
             totalDebits,
-            controlsThisMonth
+            controlsThisMonth,
+            monthlyEarnings,
+            monthlyControlEarnings,
+            monthlyInstallationEarningsRaw
         };
     }, [filteredPatients]);
 
@@ -219,7 +208,7 @@ const AdminDashboard: React.FC = () => {
         });
 
         return Array.from(controlsMap.entries())
-            .map(([name, controls]) => ({ name: name.split(' ')[0] + ' ' + (name.split(' ')[1] || ''), controls }))
+            .map(([name, controls]) => ({ name: name, controls })) // Full name
             .filter(item => item.controls > 0);
     }, [orthodonticPatients, orthodontists]);
 
@@ -269,24 +258,18 @@ const AdminDashboard: React.FC = () => {
                         <div className="p-2 rounded-lg bg-emerald-50">
                             <DollarSign className="text-emerald-500" size={20} />
                         </div>
-                        <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">Ingresos Totales</span>
+                        <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">Ingresos Este Mes</span>
                     </div>
-                    <div className="text-2xl font-bold text-slate-800">${stats.totalEarnings.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-slate-800">${stats.monthlyEarnings.toLocaleString()}</div>
                     <div className="mt-2 flex flex-col gap-1 text-xs">
                         <div className="flex justify-between text-emerald-600">
                             <span>Instalaciones:</span>
-                            <span className="font-semibold">${stats.installationEarnings.toLocaleString()}</span>
+                            <span className="font-semibold">${stats.monthlyInstallationEarningsRaw.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-blue-600">
                             <span>Controles:</span>
-                            <span className="font-semibold">${stats.controlEarnings.toLocaleString()}</span>
+                            <span className="font-semibold">${stats.monthlyControlEarnings.toLocaleString()}</span>
                         </div>
-                        {stats.totalDebits > 0 && (
-                            <div className="flex justify-between text-orange-600">
-                                <span>Débitos:</span>
-                                <span className="font-semibold">-${stats.totalDebits.toLocaleString()}</span>
-                            </div>
-                        )}
                     </div>
                 </div>
                 <SummaryCard
@@ -300,10 +283,10 @@ const AdminDashboard: React.FC = () => {
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Monthly Earnings Chart */}
-                <ChartCard title="Ganancias Acumuladas por Mes">
+                <ChartCard title="Ganancias Mensuales">
                     {monthlyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={monthlyData}>
+                            <BarChart data={monthlyData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
                                 <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
@@ -311,15 +294,8 @@ const AdminDashboard: React.FC = () => {
                                     contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                                     formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ganancias']}
                                 />
-                                <Line
-                                    type="monotone"
-                                    dataKey="earnings"
-                                    stroke="#3B82F6"
-                                    strokeWidth={3}
-                                    dot={{ fill: '#3B82F6', strokeWidth: 2 }}
-                                    activeDot={{ r: 6 }}
-                                />
-                            </LineChart>
+                                <Bar dataKey="earnings" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                            </BarChart>
                         </ResponsiveContainer>
                     ) : (
                         <EmptyState />
@@ -330,10 +306,10 @@ const AdminDashboard: React.FC = () => {
                 <ChartCard title="Ganancias por Profesional (Desglose)">
                     {professionalEarningsBreakdown.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={professionalEarningsBreakdown} layout="vertical" margin={{ left: 20 }}>
+                            <BarChart data={professionalEarningsBreakdown} layout="vertical" margin={{ left: 40 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis type="number" tick={{ fontSize: 12 }} stroke="#64748b" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
-                                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} stroke="#64748b" width={100} />
+                                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} stroke="#64748b" width={120} />
                                 <Tooltip
                                     contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                                     formatter={(value: number, name: string) => {
@@ -348,26 +324,6 @@ const AdminDashboard: React.FC = () => {
                         </ResponsiveContainer>
                     ) : (
                         <EmptyState />
-                    )}
-                </ChartCard>
-
-                {/* Arch Usage Chart */}
-                <ChartCard title="Calibre de Arco Más Usado">
-                    {archUsage.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={archUsage} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis type="number" tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <YAxis dataKey="arch" type="category" tick={{ fontSize: 11 }} stroke="#64748b" width={100} />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [value, 'Colocaciones']}
-                                />
-                                <Bar dataKey="count" fill="#10B981" radius={[0, 4, 4, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <EmptyState message="No hay datos de arcos" />
                     )}
                 </ChartCard>
 

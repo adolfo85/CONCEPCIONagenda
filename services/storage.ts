@@ -65,25 +65,35 @@ export const getPatients = async (): Promise<Patient[]> => {
 
 export const createPatient = async (patient: Patient): Promise<void> => {
   try {
-    await fetch(`${API_URL}/patients`, {
+    const response = await fetch(`${API_URL}/patients`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patient)
     });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to create patient');
+    }
   } catch (error) {
     console.error("Error creating patient:", error);
+    throw error; // Re-throw to let React Query handle it
   }
 };
 
 export const updatePatient = async (patient: Patient): Promise<void> => {
   try {
-    await fetch(`${API_URL}/patients/${patient.id}`, {
+    const response = await fetch(`${API_URL}/patients/${patient.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patient)
     });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update patient');
+    }
   } catch (error) {
     console.error("Error updating patient:", error);
+    throw error;
   }
 };
 
