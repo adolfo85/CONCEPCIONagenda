@@ -36,23 +36,33 @@ export default async function handler(req, res) {
                     installationTotal: parseFloat(p.installation_total || 0),
                     records: records
                         .filter(r => r.patient_id === p.id)
-                        .map(r => ({
-                            id: r.id,
-                            date: r.date,
-                            upperArch: r.upper_arch,
-                            lowerArch: r.lower_arch,
-                            upperMonths: r.upper_months ? parseFloat(r.upper_months) : undefined,
-                            lowerMonths: r.lower_months ? parseFloat(r.lower_months) : undefined,
-                            monthsActive: r.months_active ? parseFloat(r.months_active) : undefined,
-                            serviceType: r.service_type,
-                            toothNumbers: r.tooth_numbers,
-                            toothSurfaces: r.tooth_surfaces,
-                            toothDetails: r.tooth_details,
-                            notes: r.notes,
-                            paymentAmount: parseFloat(r.payment_amount || 0),
-                            installationPayment: parseFloat(r.installation_payment || 0),
-                            isInstallation: r.is_installation
-                        }))
+                        .map(r => {
+                            // Format date as YYYY-MM-DD string
+                            let dateStr = r.date;
+                            if (r.date instanceof Date) {
+                                dateStr = r.date.toISOString().split('T')[0];
+                            } else if (typeof r.date === 'string' && r.date.includes('T')) {
+                                dateStr = r.date.split('T')[0];
+                            }
+
+                            return {
+                                id: r.id,
+                                date: dateStr,
+                                upperArch: r.upper_arch,
+                                lowerArch: r.lower_arch,
+                                upperMonths: r.upper_months ? parseFloat(r.upper_months) : undefined,
+                                lowerMonths: r.lower_months ? parseFloat(r.lower_months) : undefined,
+                                monthsActive: r.months_active ? parseFloat(r.months_active) : undefined,
+                                serviceType: r.service_type,
+                                toothNumbers: r.tooth_numbers,
+                                toothSurfaces: r.tooth_surfaces,
+                                toothDetails: r.tooth_details,
+                                notes: r.notes,
+                                paymentAmount: parseFloat(r.payment_amount || 0),
+                                installationPayment: parseFloat(r.installation_payment || 0),
+                                isInstallation: r.is_installation
+                            };
+                        })
                 };
             });
 
