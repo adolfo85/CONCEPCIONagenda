@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS patients (
     email TEXT,
     start_date DATE NOT NULL,
     installation_total NUMERIC(10, 2) DEFAULT 0,
+    installation_debit NUMERIC(10, 2) DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -27,6 +27,7 @@ export async function handler(event, context) {
                     email: p.email,
                     startDate: p.start_date,
                     installationTotal: parseFloat(p.installation_total || 0),
+                    installationDebit: parseFloat(p.installation_debit || 0),
                     records: records
                         .filter(r => r.patient_id === p.id)
                         .map(r => {
@@ -73,11 +74,11 @@ export async function handler(event, context) {
             };
         }
     } else if (event.httpMethod === 'POST') {
-        const { id, dentistId, name, phone, email, startDate, installationTotal } = JSON.parse(event.body);
+        const { id, dentistId, name, phone, email, startDate, installationTotal, installationDebit } = JSON.parse(event.body);
         try {
             await pool.query(
-                'INSERT INTO patients (id, dentist_id, name, phone, email, start_date, installation_total) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                [id, dentistId, name, phone, email, startDate, installationTotal || 0]
+                'INSERT INTO patients (id, dentist_id, name, phone, email, start_date, installation_total, installation_debit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+                [id, dentistId, name, phone, email, startDate, installationTotal || 0, installationDebit || 0]
             );
             return {
                 statusCode: 200,
@@ -92,7 +93,7 @@ export async function handler(event, context) {
             };
         }
     } else if (event.httpMethod === 'PUT') {
-        const { name, phone, email, installationTotal, records } = JSON.parse(event.body);
+        const { name, phone, email, installationTotal, installationDebit, records } = JSON.parse(event.body);
         const patientId = event.path.split('/').pop();
 
         const client = await pool.connect();
@@ -101,8 +102,8 @@ export async function handler(event, context) {
 
             // Update patient info
             await client.query(
-                'UPDATE patients SET name = $1, phone = $2, email = $3, installation_total = $4 WHERE id = $5',
-                [name, phone, email, installationTotal || 0, patientId]
+                'UPDATE patients SET name = $1, phone = $2, email = $3, installation_total = $4, installation_debit = $5 WHERE id = $6',
+                [name, phone, email, installationTotal || 0, installationDebit || 0, patientId]
             );
 
             // Replace records

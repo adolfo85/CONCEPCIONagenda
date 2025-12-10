@@ -50,6 +50,7 @@ export interface Patient {
   email?: string;
   startDate: string;
   installationTotal?: number; // Total cost of installation (orthodontics only)
+  installationDebit?: number; // Debit/discount on installation (affects earnings, not patient balance)
   records: ClinicalRecord[];
 }
 

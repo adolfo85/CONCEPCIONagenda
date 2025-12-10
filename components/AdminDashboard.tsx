@@ -100,6 +100,41 @@ const AdminDashboard: React.FC = () => {
         return Array.from(earningsMap.entries()).map(([name, value]) => ({ name, value }));
     }, [orthodonticPatients, orthodontists]);
 
+    // Calculate earnings by professional with breakdown (installation vs control)
+    const professionalEarningsBreakdown = useMemo(() => {
+        const earningsMap = new Map<string, { installation: number; control: number }>();
+
+        orthodonticPatients.forEach(patient => {
+            const dentist = orthodontists.find(d => d.id === patient.dentistId);
+            if (!dentist) return;
+
+            // Calculate installation earnings (with debit subtraction)
+            const installationEarningsRaw = patient.records.reduce((sum, record) => {
+                return sum + (record.installationPayment || 0);
+            }, 0);
+            const debit = patient.installationDebit || 0;
+            const installationEarnings = Math.max(installationEarningsRaw - debit, 0);
+
+            // Calculate control earnings
+            const controlEarnings = patient.records.reduce((sum, record) => {
+                return sum + (record.paymentAmount || 0);
+            }, 0);
+
+            const existing = earningsMap.get(dentist.name) || { installation: 0, control: 0 };
+            earningsMap.set(dentist.name, {
+                installation: existing.installation + installationEarnings,
+                control: existing.control + controlEarnings
+            });
+        });
+
+        return Array.from(earningsMap.entries()).map(([name, data]) => ({
+            name: name.split(' ')[0] + ' ' + (name.split(' ')[1] || ''),
+            installation: data.installation,
+            control: data.control,
+            total: data.installation + data.control
+        }));
+    }, [orthodonticPatients, orthodontists]);
+
     // Calculate arch usage (counting only new placements)
     const archUsage = useMemo(() => {
         const archCount = new Map<string, number>();
@@ -136,25 +171,36 @@ const AdminDashboard: React.FC = () => {
     // Summary statistics
     const stats = useMemo(() => {
         const currentMonth = new Date().toISOString().slice(0, 7);
-        let totalEarnings = 0;
+        let controlEarnings = 0;
+        let installationEarningsRaw = 0;
+        let totalDebits = 0;
         let totalControls = 0;
         let controlsThisMonth = 0;
 
         filteredPatients.forEach(patient => {
+            // Add up debits from patients
+            totalDebits += patient.installationDebit || 0;
+
             patient.records.forEach(record => {
-                totalEarnings += (record.paymentAmount || 0) + (record.installationPayment || 0);
+                controlEarnings += record.paymentAmount || 0;
+                installationEarningsRaw += record.installationPayment || 0;
                 totalControls++;
 
-                if (record.date.startsWith(currentMonth)) {
+                if (record.date && record.date.startsWith(currentMonth)) {
                     controlsThisMonth++;
                 }
             });
         });
 
+        const installationEarnings = Math.max(installationEarningsRaw - totalDebits, 0);
+        const totalEarnings = controlEarnings + installationEarnings;
+
         return {
             totalPatients: filteredPatients.length,
             totalEarnings,
-            averagePerControl: totalControls > 0 ? totalEarnings / totalControls : 0,
+            controlEarnings,
+            installationEarnings,
+            totalDebits,
             controlsThisMonth
         };
     }, [filteredPatients]);
@@ -218,12 +264,31 @@ const AdminDashboard: React.FC = () => {
                     value={stats.totalPatients.toString()}
                     color="blue"
                 />
-                <SummaryCard
-                    icon={<DollarSign className="text-emerald-500" />}
-                    label="Ingresos Totales"
-                    value={`$${stats.totalEarnings.toLocaleString()}`}
-                    color="emerald"
-                />
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 rounded-lg bg-emerald-50">
+                            <DollarSign className="text-emerald-500" size={20} />
+                        </div>
+                        <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">Ingresos Totales</span>
+                    </div>
+                    <div className="text-2xl font-bold text-slate-800">${stats.totalEarnings.toLocaleString()}</div>
+                    <div className="mt-2 flex flex-col gap-1 text-xs">
+                        <div className="flex justify-between text-emerald-600">
+                            <span>Instalaciones:</span>
+                            <span className="font-semibold">${stats.installationEarnings.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-600">
+                            <span>Controles:</span>
+                            <span className="font-semibold">${stats.controlEarnings.toLocaleString()}</span>
+                        </div>
+                        {stats.totalDebits > 0 && (
+                            <div className="flex justify-between text-orange-600">
+                                <span>Débitos:</span>
+                                <span className="font-semibold">-${stats.totalDebits.toLocaleString()}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
                 <SummaryCard
                     icon={<Calendar className="text-violet-500" />}
                     label="Controles Este Mes"
@@ -262,30 +327,24 @@ const AdminDashboard: React.FC = () => {
                 </ChartCard>
 
                 {/* Earnings by Professional */}
-                <ChartCard title="Ganancias por Profesional">
-                    {professionalEarnings.length > 0 ? (
+                <ChartCard title="Ganancias por Profesional (Desglose)">
+                    {professionalEarningsBreakdown.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie
-                                    data={professionalEarnings}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={100}
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name.split(' ')[0]} (${(percent * 100).toFixed(0)}%)`}
-                                >
-                                    {professionalEarnings.map((_, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
+                            <BarChart data={professionalEarningsBreakdown} layout="vertical" margin={{ left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis type="number" tick={{ fontSize: 12 }} stroke="#64748b" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} stroke="#64748b" width={100} />
                                 <Tooltip
                                     contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ingresos']}
+                                    formatter={(value: number, name: string) => {
+                                        const label = name === 'installation' ? 'Instalación' : 'Controles';
+                                        return [`$${value.toLocaleString()}`, label];
+                                    }}
                                 />
                                 <Legend />
-                            </PieChart>
+                                <Bar dataKey="installation" name="Instalación" stackId="a" fill="#10B981" radius={[0, 4, 4, 0]} />
+                                <Bar dataKey="control" name="Controles" stackId="a" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+                            </BarChart>
                         </ResponsiveContainer>
                     ) : (
                         <EmptyState />

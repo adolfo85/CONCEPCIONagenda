@@ -36,6 +36,7 @@ const PatientDetail: React.FC = () => {
   // Installation Config State
   const [showInstallationInput, setShowInstallationInput] = useState(false);
   const [newInstallationTotal, setNewInstallationTotal] = useState('');
+  const [newInstallationDebit, setNewInstallationDebit] = useState('');
 
   // New Record State
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -75,6 +76,7 @@ const PatientDetail: React.FC = () => {
       setEditName(patient.name);
       setEditPhone(patient.phone);
       setNewInstallationTotal(patient.installationTotal ? patient.installationTotal.toString() : '');
+      setNewInstallationDebit(patient.installationDebit ? patient.installationDebit.toString() : '');
     }
   }, [patient]);
 
@@ -92,7 +94,8 @@ const PatientDetail: React.FC = () => {
   const handleSaveInstallationTotal = () => {
     if (!patient) return;
     const total = parseFloat(newInstallationTotal) || 0;
-    const updated = { ...patient, installationTotal: total };
+    const debit = parseFloat(newInstallationDebit) || 0;
+    const updated = { ...patient, installationTotal: total, installationDebit: debit };
     savePatientChanges(updated);
     setShowInstallationInput(false);
   };
@@ -412,15 +415,27 @@ const PatientDetail: React.FC = () => {
                 </div>
 
                 {showInstallationInput ? (
-                  <div className="flex gap-2 items-center mt-1">
-                    <input
-                      type="number"
-                      placeholder="Valor total"
-                      className="w-full text-sm p-1 border rounded bg-white text-slate-900"
-                      value={newInstallationTotal}
-                      onChange={e => setNewInstallationTotal(e.target.value)}
-                    />
-                    <button onClick={handleSaveInstallationTotal} className="bg-emerald-600 text-white p-1 rounded text-xs">OK</button>
+                  <div className="space-y-2 mt-1">
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="number"
+                        placeholder="Valor total"
+                        className="flex-1 text-sm p-1 border rounded bg-white text-slate-900"
+                        value={newInstallationTotal}
+                        onChange={e => setNewInstallationTotal(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="number"
+                        placeholder="Débito (descuento)"
+                        className="flex-1 text-sm p-1 border rounded bg-white text-slate-900"
+                        value={newInstallationDebit}
+                        onChange={e => setNewInstallationDebit(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-[10px] text-emerald-600/70">El débito no afecta el saldo del paciente, solo las ganancias.</p>
+                    <button onClick={handleSaveInstallationTotal} className="w-full bg-emerald-600 text-white p-1 rounded text-xs">Guardar</button>
                   </div>
                 ) : (
                   <>
@@ -442,6 +457,11 @@ const PatientDetail: React.FC = () => {
                           <span>Pagado: ${installationPaid.toLocaleString()}</span>
                           <span>Total: ${installationTotal.toLocaleString()}</span>
                         </div>
+                        {(patient?.installationDebit || 0) > 0 && (
+                          <div className="mt-2 text-[10px] text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                            Débito: -${(patient?.installationDebit || 0).toLocaleString()} (afecta ganancias)
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-sm text-emerald-600/50 mt-1">
