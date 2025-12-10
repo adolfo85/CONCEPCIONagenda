@@ -211,7 +211,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <SummaryCard
                     icon={<Users className="text-blue-500" />}
                     label="Total Pacientes"
@@ -223,12 +223,6 @@ const AdminDashboard: React.FC = () => {
                     label="Ingresos Totales"
                     value={`$${stats.totalEarnings.toLocaleString()}`}
                     color="emerald"
-                />
-                <SummaryCard
-                    icon={<TrendingUp className="text-amber-500" />}
-                    label="Promedio por Control"
-                    value={`$${stats.averagePerControl.toFixed(0)}`}
-                    color="amber"
                 />
                 <SummaryCard
                     icon={<Calendar className="text-violet-500" />}
