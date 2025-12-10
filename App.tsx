@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import LandingPage from './components/LandingPage';
 import PatientList from './components/PatientList';
 import PatientDetail from './components/PatientDetail';
+import AdminDashboard from './components/AdminDashboard';
 
 const App: React.FC = () => {
   return (
@@ -16,6 +17,9 @@ const App: React.FC = () => {
           <Routes>
             {/* Landing Page (Dentist Directory) */}
             <Route path="/" element={<LandingPage />} />
+
+            {/* Admin Dashboard */}
+            <Route path="/admin" element={<AdminDashboard />} />
 
             {/* Patient List (Filtered by Dentist ID) */}
             <Route path="/dentist/:dentistId" element={<PatientList />} />
