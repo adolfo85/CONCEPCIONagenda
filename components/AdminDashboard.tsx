@@ -32,11 +32,26 @@ const AdminDashboard: React.FC = () => {
     const { data: patients = [] } = usePatients();
     const [selectedDentistId, setSelectedDentistId] = useState<string>('all');
 
-    // Filter patients by selected dentist
+    // Filter only orthodontist dentists
+    const orthodontists = useMemo(() => {
+        return dentists.filter(d => !d.specialty || d.specialty === 'orthodontics');
+    }, [dentists]);
+
+    // Get orthodontist IDs for filtering patients
+    const orthodontistIds = useMemo(() => {
+        return new Set(orthodontists.map(d => d.id));
+    }, [orthodontists]);
+
+    // Filter patients to only those belonging to orthodontists
+    const orthodonticPatients = useMemo(() => {
+        return patients.filter(p => orthodontistIds.has(p.dentistId));
+    }, [patients, orthodontistIds]);
+
+    // Filter patients by selected dentist (within orthodontists only)
     const filteredPatients = useMemo(() => {
-        if (selectedDentistId === 'all') return patients;
-        return patients.filter(p => p.dentistId === selectedDentistId);
-    }, [patients, selectedDentistId]);
+        if (selectedDentistId === 'all') return orthodonticPatients;
+        return orthodonticPatients.filter(p => p.dentistId === selectedDentistId);
+    }, [orthodonticPatients, selectedDentistId]);
 
     // Calculate monthly earnings and patient counts
     const monthlyData = useMemo(() => {
@@ -67,12 +82,12 @@ const AdminDashboard: React.FC = () => {
             }));
     }, [filteredPatients]);
 
-    // Calculate earnings by professional
+    // Calculate earnings by professional (orthodontists only)
     const professionalEarnings = useMemo(() => {
         const earningsMap = new Map<string, number>();
 
-        patients.forEach(patient => {
-            const dentist = dentists.find(d => d.id === patient.dentistId);
+        orthodonticPatients.forEach(patient => {
+            const dentist = orthodontists.find(d => d.id === patient.dentistId);
             if (!dentist) return;
 
             const totalEarnings = patient.records.reduce((sum, record) => {
@@ -83,7 +98,7 @@ const AdminDashboard: React.FC = () => {
         });
 
         return Array.from(earningsMap.entries()).map(([name, value]) => ({ name, value }));
-    }, [patients, dentists]);
+    }, [orthodonticPatients, orthodontists]);
 
     // Calculate arch usage (counting only new placements)
     const archUsage = useMemo(() => {
@@ -144,6 +159,24 @@ const AdminDashboard: React.FC = () => {
         };
     }, [filteredPatients]);
 
+    // Monthly controls by professional (for the new chart)
+    const monthlyControlsByProfessional = useMemo(() => {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const controlsMap = new Map<string, number>();
+
+        orthodonticPatients.forEach(patient => {
+            const dentist = orthodontists.find(d => d.id === patient.dentistId);
+            if (!dentist) return;
+
+            const monthlyControls = patient.records.filter(r => r.date.startsWith(currentMonth)).length;
+            controlsMap.set(dentist.name, (controlsMap.get(dentist.name) || 0) + monthlyControls);
+        });
+
+        return Array.from(controlsMap.entries())
+            .map(([name, controls]) => ({ name: name.split(' ')[0] + ' ' + (name.split(' ')[1] || ''), controls }))
+            .filter(item => item.controls > 0);
+    }, [orthodonticPatients, orthodontists]);
+
     return (
         <div className="space-y-8">
             {/* Header */}
@@ -169,8 +202,8 @@ const AdminDashboard: React.FC = () => {
                         onChange={(e) => setSelectedDentistId(e.target.value)}
                         className="bg-transparent border-none outline-none text-slate-700 font-medium cursor-pointer"
                     >
-                        <option value="all">Todos los Profesionales</option>
-                        {dentists.map(dentist => (
+                        <option value="all">Todos los Ortodoncistas</option>
+                        {orthodontists.map(dentist => (
                             <option key={dentist.id} value={dentist.id}>{dentist.name}</option>
                         ))}
                     </select>
@@ -302,6 +335,26 @@ const AdminDashboard: React.FC = () => {
                         </ResponsiveContainer>
                     ) : (
                         <EmptyState />
+                    )}
+                </ChartCard>
+
+                {/* Controls This Month by Professional */}
+                <ChartCard title="Controles Este Mes por Profesional">
+                    {monthlyControlsByProfessional.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={monthlyControlsByProfessional}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
+                                <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                    formatter={(value: number) => [value, 'Controles']}
+                                />
+                                <Bar dataKey="controls" fill="#EC4899" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <EmptyState message="No hay controles este mes" />
                     )}
                 </ChartCard>
             </div>
