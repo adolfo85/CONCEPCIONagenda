@@ -95,7 +95,6 @@ const PatientDetail: React.FC = () => {
   const handleSaveInstallationTotal = () => {
     if (!patient) return;
     const total = parseFloat(newInstallationTotal) || 0;
-    const total = parseFloat(newInstallationTotal) || 0;
     // const debit = parseFloat(newInstallationDebit) || 0;
     // Only update total, preserve existing debit if any (though we are moving away from it) or just ignore it.
     // User wants to remove debit from here.
