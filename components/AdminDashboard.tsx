@@ -103,38 +103,29 @@ const AdminDashboard: React.FC = () => {
                 const data = monthMap.get(monthKey)!;
 
                 // Add control earnings
-                data.control += (record.paymentAmount || 0);
-
                 // Add installation earnings (raw payment, no debit deduction)
                 const rawInstallation = (record.installationPayment || 0);
                 const debit = (record.debitAmount || 0);
 
                 // Net earnings for this record = (Control + Installation) - Debit
-                // We subtract debit from the "control" part or "installation" part? 
-                // To keep it simple and correct in the total, we can subtract it from the total.
-                // But the chart has stacked bars. 
-                // Let's subtract it from 'control' for visualization if possible, or just track it separately?
-                // The user wants it to affect "Ganancia". 
-                // If we subtract from control, it might go negative. 
-                // Let's just subtract from the total sum in the map, but we need to attribute it to one of the bars.
-                // Better approach: Create a 'net' value. 
-                // If we subtract from control, visual might be weird.
-                // Let's subtract from control first, if negative, subtract remainder from installation.
+                // Logic: Subtract debit from Installation FIRST, then from Control.
 
                 let netControl = (record.paymentAmount || 0);
                 let netInstallation = rawInstallation;
                 let remainingDebit = debit;
 
-                if (netControl >= remainingDebit) {
-                    netControl -= remainingDebit;
+                // 1. Subtract from Installation
+                if (netInstallation >= remainingDebit) {
+                    netInstallation -= remainingDebit;
                     remainingDebit = 0;
                 } else {
-                    remainingDebit -= netControl;
-                    netControl = 0;
+                    remainingDebit -= netInstallation;
+                    netInstallation = 0;
                 }
 
+                // 2. Subtract remaining from Control
                 if (remainingDebit > 0) {
-                    netInstallation = Math.max(0, netInstallation - remainingDebit);
+                    netControl = Math.max(0, netControl - remainingDebit);
                 }
 
                 data.control += netControl;
