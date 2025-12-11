@@ -83,7 +83,7 @@ const AdminDashboard: React.FC = () => {
             const installationDebit = patient.installationDebit || 0;
             const installationNetFactor = installationTotal > 0
                 ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
-                : 0;
+                : 1;
 
             patient.records.forEach(record => {
                 const date = new Date(record.date);
