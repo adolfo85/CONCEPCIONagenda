@@ -55,19 +55,44 @@ const AdminDashboard: React.FC = () => {
 
     // Calculate monthly earnings and patient counts
     const monthlyData = useMemo(() => {
-        const monthMap = new Map<string, { earnings: number; patients: Set<string> }>();
+        const monthMap = new Map<string, { control: number; installation: number; patients: Set<string> }>();
 
         filteredPatients.forEach(patient => {
+            // Calculate installation net factor for proportional debit deduction
+            const installationTotal = patient.installationTotal || 0;
+            const installationDebit = patient.installationDebit || 0;
+            // If total is 0, factor is 0 (avoid division by zero). If debit >= total, factor is 0.
+            const installationNetFactor = installationTotal > 0
+                ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
+                : 0;
+
             patient.records.forEach(record => {
                 const date = new Date(record.date);
                 const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
                 if (!monthMap.has(monthKey)) {
-                    monthMap.set(monthKey, { earnings: 0, patients: new Set() });
+                    monthMap.set(monthKey, { control: 0, installation: 0, patients: new Set() });
                 }
 
                 const data = monthMap.get(monthKey)!;
-                data.earnings += (record.paymentAmount || 0) + (record.installationPayment || 0);
+
+                // Add control earnings
+                data.control += (record.paymentAmount || 0);
+
+                // Add installation earnings with proportional debit applied
+                const rawInstallation = (record.installationPayment || 0);
+                // If the record is marked as installation but has no specific installationPayment, 
+                // legacy logic might have put it in paymentAmount. 
+                // However, our new logic in PatientDetail separates them.
+                // We will stick to the explicit fields.
+
+                // Note: If we want to be very precise with legacy data where `isInstallation` is true
+                // but `installationPayment` is undefined, we might need to check that.
+                // But `PatientDetail` seems to handle migration or display correctly.
+                // Let's assume `installationPayment` is the source of truth for installation money.
+
+                data.installation += rawInstallation * installationNetFactor;
+
                 data.patients.add(patient.id);
             });
         });
@@ -77,63 +102,12 @@ const AdminDashboard: React.FC = () => {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([month, data]) => ({
                 month: formatMonthLabel(month),
-                earnings: data.earnings,
+                control: data.control,
+                installation: data.installation,
+                total: data.control + data.installation,
                 patients: data.patients.size
             }));
     }, [filteredPatients]);
-
-    // Calculate earnings by professional (orthodontists only)
-    const professionalEarnings = useMemo(() => {
-        const earningsMap = new Map<string, number>();
-
-        orthodonticPatients.forEach(patient => {
-            const dentist = orthodontists.find(d => d.id === patient.dentistId);
-            if (!dentist) return;
-
-            const totalEarnings = patient.records.reduce((sum, record) => {
-                return sum + (record.paymentAmount || 0) + (record.installationPayment || 0);
-            }, 0);
-
-            earningsMap.set(dentist.name, (earningsMap.get(dentist.name) || 0) + totalEarnings);
-        });
-
-        return Array.from(earningsMap.entries()).map(([name, value]) => ({ name, value }));
-    }, [orthodonticPatients, orthodontists]);
-
-    // Calculate earnings by professional with breakdown (installation vs control)
-    const professionalEarningsBreakdown = useMemo(() => {
-        const earningsMap = new Map<string, { installation: number; control: number }>();
-
-        orthodonticPatients.forEach(patient => {
-            const dentist = orthodontists.find(d => d.id === patient.dentistId);
-            if (!dentist) return;
-
-            // Calculate installation earnings (with debit subtraction)
-            const installationEarningsRaw = patient.records.reduce((sum, record) => {
-                return sum + (record.installationPayment || 0);
-            }, 0);
-            const debit = patient.installationDebit || 0;
-            const installationEarnings = Math.max(installationEarningsRaw - debit, 0);
-
-            // Calculate control earnings
-            const controlEarnings = patient.records.reduce((sum, record) => {
-                return sum + (record.paymentAmount || 0);
-            }, 0);
-
-            const existing = earningsMap.get(dentist.name) || { installation: 0, control: 0 };
-            earningsMap.set(dentist.name, {
-                installation: existing.installation + installationEarnings,
-                control: existing.control + controlEarnings
-            });
-        });
-
-        return Array.from(earningsMap.entries()).map(([name, data]) => ({
-            name: name, // Full name
-            installation: data.installation,
-            control: data.control,
-            total: data.installation + data.control
-        }));
-    }, [orthodonticPatients, orthodontists]);
 
     // Summary statistics
     const stats = useMemo(() => {
@@ -147,13 +121,19 @@ const AdminDashboard: React.FC = () => {
         // Monthly specific stats
         let monthlyControlEarnings = 0;
         let monthlyInstallationEarningsRaw = 0;
-        let monthlyDebits = 0; // We might need to track debits per month, but currently debits are per patient/installation. 
-        // Assuming debit applies to the installation month or generally. 
-        // For now, let's just show total earnings for the month based on payment dates.
+
+        // We need to calculate monthly earnings with the same net factor logic for consistency
+        let monthlyInstallationEarningsNet = 0;
 
         filteredPatients.forEach(patient => {
             // Add up debits from patients (Total)
             totalDebits += patient.installationDebit || 0;
+
+            const installationTotal = patient.installationTotal || 0;
+            const installationDebit = patient.installationDebit || 0;
+            const installationNetFactor = installationTotal > 0
+                ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
+                : 0;
 
             patient.records.forEach(record => {
                 const amount = (record.paymentAmount || 0);
@@ -167,6 +147,7 @@ const AdminDashboard: React.FC = () => {
                     controlsThisMonth++;
                     monthlyControlEarnings += amount;
                     monthlyInstallationEarningsRaw += instAmount;
+                    monthlyInstallationEarningsNet += instAmount * installationNetFactor;
                 }
             });
         });
@@ -174,12 +155,8 @@ const AdminDashboard: React.FC = () => {
         const installationEarnings = Math.max(installationEarningsRaw - totalDebits, 0);
         const totalEarnings = controlEarnings + installationEarnings;
 
-        // For monthly earnings, we don't easily know when the debit was applied. 
-        // If we assume debit is applied at installation time, we'd need to know installation date.
-        // For simplicity and safety, we'll show gross monthly earnings for now, or subtract proportional debit?
-        // Let's just show gross for monthly to avoid negative confusion unless we track debit date.
-        // OR: The user wants "Ganancias Mensuales". 
-        const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsRaw;
+        // Monthly earnings now reflect the net installation (proportional)
+        const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsNet;
 
         return {
             totalPatients: filteredPatients.length,
@@ -190,7 +167,7 @@ const AdminDashboard: React.FC = () => {
             controlsThisMonth,
             monthlyEarnings,
             monthlyControlEarnings,
-            monthlyInstallationEarningsRaw
+            monthlyInstallationEarningsNet
         };
     }, [filteredPatients]);
 
@@ -264,7 +241,7 @@ const AdminDashboard: React.FC = () => {
                     <div className="mt-2 flex flex-col gap-1 text-xs">
                         <div className="flex justify-between text-emerald-600">
                             <span>Instalaciones:</span>
-                            <span className="font-semibold">${stats.monthlyInstallationEarningsRaw.toLocaleString()}</span>
+                            <span className="font-semibold">${stats.monthlyInstallationEarningsNet.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-blue-600">
                             <span>Controles:</span>
@@ -281,35 +258,15 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Monthly Earnings Chart */}
-                <ChartCard title="Ganancias Mensuales">
+            <div className="grid grid-cols-1 gap-6">
+                {/* Monthly Earnings Chart - Full Width */}
+                <ChartCard title="Ganancias Mensuales (Desglose)">
                     {monthlyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={monthlyData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
                                 <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [`$${value.toLocaleString()}`, 'Ganancias']}
-                                />
-                                <Bar dataKey="earnings" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <EmptyState />
-                    )}
-                </ChartCard>
-
-                {/* Earnings by Professional */}
-                <ChartCard title="Ganancias por Profesional (Desglose)">
-                    {professionalEarningsBreakdown.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={professionalEarningsBreakdown} layout="vertical" margin={{ left: 40 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis type="number" tick={{ fontSize: 12 }} stroke="#64748b" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
-                                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} stroke="#64748b" width={120} />
                                 <Tooltip
                                     contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                                     formatter={(value: number, name: string) => {
@@ -318,8 +275,8 @@ const AdminDashboard: React.FC = () => {
                                     }}
                                 />
                                 <Legend />
-                                <Bar dataKey="installation" name="Instalación" stackId="a" fill="#10B981" radius={[0, 4, 4, 0]} />
-                                <Bar dataKey="control" name="Controles" stackId="a" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+                                <Bar dataKey="installation" name="Instalación" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
+                                <Bar dataKey="control" name="Controles" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -327,45 +284,47 @@ const AdminDashboard: React.FC = () => {
                     )}
                 </ChartCard>
 
-                {/* Patients per Month */}
-                <ChartCard title="Pacientes Atendidos por Mes">
-                    {monthlyData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={monthlyData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [value, 'Pacientes']}
-                                />
-                                <Bar dataKey="patients" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <EmptyState />
-                    )}
-                </ChartCard>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Patients per Month */}
+                    <ChartCard title="Pacientes Atendidos por Mes">
+                        {monthlyData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={monthlyData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
+                                    <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                        formatter={(value: number) => [value, 'Pacientes']}
+                                    />
+                                    <Bar dataKey="patients" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <EmptyState />
+                        )}
+                    </ChartCard>
 
-                {/* Controls This Month by Professional */}
-                <ChartCard title="Controles Este Mes por Profesional">
-                    {monthlyControlsByProfessional.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={monthlyControlsByProfessional}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
-                                <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number) => [value, 'Controles']}
-                                />
-                                <Bar dataKey="controls" fill="#EC4899" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <EmptyState message="No hay controles este mes" />
-                    )}
-                </ChartCard>
+                    {/* Controls This Month by Professional */}
+                    <ChartCard title="Controles Este Mes por Profesional">
+                        {monthlyControlsByProfessional.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={300}>
+                                <BarChart data={monthlyControlsByProfessional}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
+                                    <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                        formatter={(value: number) => [value, 'Controles']}
+                                    />
+                                    <Bar dataKey="controls" fill="#EC4899" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <EmptyState message="No hay controles este mes" />
+                        )}
+                    </ChartCard>
+                </div>
             </div>
         </div>
     );
