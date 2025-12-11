@@ -36,7 +36,7 @@ const PatientDetail: React.FC = () => {
   // Installation Config State
   const [showInstallationInput, setShowInstallationInput] = useState(false);
   const [newInstallationTotal, setNewInstallationTotal] = useState('');
-  const [newInstallationDebit, setNewInstallationDebit] = useState('');
+  // const [newInstallationDebit, setNewInstallationDebit] = useState(''); // Removed legacy debit input
 
   // New Record State
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -77,7 +77,7 @@ const PatientDetail: React.FC = () => {
       setEditName(patient.name);
       setEditPhone(patient.phone);
       setNewInstallationTotal(patient.installationTotal ? patient.installationTotal.toString() : '');
-      setNewInstallationDebit(patient.installationDebit ? patient.installationDebit.toString() : '');
+      // setNewInstallationDebit(patient.installationDebit ? patient.installationDebit.toString() : '');
     }
   }, [patient]);
 
@@ -95,8 +95,11 @@ const PatientDetail: React.FC = () => {
   const handleSaveInstallationTotal = () => {
     if (!patient) return;
     const total = parseFloat(newInstallationTotal) || 0;
-    const debit = parseFloat(newInstallationDebit) || 0;
-    const updated = { ...patient, installationTotal: total, installationDebit: debit };
+    const total = parseFloat(newInstallationTotal) || 0;
+    // const debit = parseFloat(newInstallationDebit) || 0;
+    // Only update total, preserve existing debit if any (though we are moving away from it) or just ignore it.
+    // User wants to remove debit from here.
+    const updated = { ...patient, installationTotal: total };
     savePatientChanges(updated);
     setShowInstallationInput(false);
   };
@@ -320,6 +323,10 @@ const PatientDetail: React.FC = () => {
     }, 0) || 0;
   }, [patient]);
 
+  const totalDebits = useMemo(() => {
+    return patient?.records.reduce((sum, r) => sum + (r.debitAmount || 0), 0) || 0;
+  }, [patient]);
+
   const installationBalance = installationTotal - installationPaid;
 
   const lastControl = useMemo(() => {
@@ -432,17 +439,8 @@ const PatientDetail: React.FC = () => {
                         onChange={e => setNewInstallationTotal(e.target.value)}
                       />
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="number"
-                        placeholder="Débito (descuento)"
-                        className="flex-1 text-sm p-1 border rounded bg-white text-slate-900"
-                        value={newInstallationDebit}
-                        onChange={e => setNewInstallationDebit(e.target.value)}
-                      />
-                    </div>
-                    <p className="text-[10px] text-emerald-600/70">El débito no afecta el saldo del paciente, solo las ganancias.</p>
-                    <button onClick={handleSaveInstallationTotal} className="w-full bg-emerald-600 text-white p-1 rounded text-xs">Guardar</button>
+                    {/* Debit input removed as per request */}
+                    <button onClick={handleSaveInstallationTotal} className="w-full bg-emerald-600 text-white p-1 rounded text-xs mt-2">Guardar</button>
                   </div>
                 ) : (
                   <>
@@ -464,9 +462,9 @@ const PatientDetail: React.FC = () => {
                           <span>Pagado: ${installationPaid.toLocaleString()}</span>
                           <span>Total: ${installationTotal.toLocaleString()}</span>
                         </div>
-                        {(patient?.installationDebit || 0) > 0 && (
-                          <div className="mt-2 text-[10px] text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                            Débito: -${(patient?.installationDebit || 0).toLocaleString()}
+                        {totalDebits > 0 && (
+                          <div className="mt-2 text-[10px] text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-100">
+                            Débito de ${totalDebits.toLocaleString()} Realizado
                           </div>
                         )}
                       </div>
