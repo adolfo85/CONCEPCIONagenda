@@ -79,11 +79,12 @@ const AdminDashboard: React.FC = () => {
 
         filteredPatients.forEach(patient => {
             // Calculate installation net factor for proportional debit deduction
-            const installationTotal = patient.installationTotal || 0;
-            const installationDebit = patient.installationDebit || 0;
-            const installationNetFactor = installationTotal > 0
-                ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
-                : 1;
+            // REMOVED: User requested that earnings reflect actual payments, not adjusted by debit.
+            // const installationTotal = patient.installationTotal || 0;
+            // const installationDebit = patient.installationDebit || 0;
+            // const installationNetFactor = installationTotal > 0
+            //     ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
+            //     : 1;
 
             patient.records.forEach(record => {
                 const date = new Date(record.date);
@@ -104,9 +105,9 @@ const AdminDashboard: React.FC = () => {
                 // Add control earnings
                 data.control += (record.paymentAmount || 0);
 
-                // Add installation earnings with proportional debit applied
+                // Add installation earnings (raw payment, no debit deduction)
                 const rawInstallation = (record.installationPayment || 0);
-                data.installation += rawInstallation * installationNetFactor;
+                data.installation += rawInstallation;
 
                 data.patients.add(patient.id);
             });
@@ -148,10 +149,10 @@ const AdminDashboard: React.FC = () => {
         filteredPatients.forEach(patient => {
             totalDebits += patient.installationDebit || 0;
             const installationTotal = patient.installationTotal || 0;
-            const installationDebit = patient.installationDebit || 0;
-            const installationNetFactor = installationTotal > 0
-                ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
-                : 0;
+            // const installationDebit = patient.installationDebit || 0;
+            // const installationNetFactor = installationTotal > 0
+            //     ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
+            //     : 0;
 
             patient.records.forEach(record => {
                 const amount = (record.paymentAmount || 0);
@@ -165,12 +166,12 @@ const AdminDashboard: React.FC = () => {
                     controlsThisMonth++;
                     monthlyControlEarnings += amount;
                     monthlyInstallationEarningsRaw += instAmount;
-                    monthlyInstallationEarningsNet += instAmount * installationNetFactor;
+                    monthlyInstallationEarningsNet += instAmount; // No factor applied
                 }
             });
         });
 
-        const installationEarnings = Math.max(installationEarningsRaw - totalDebits, 0);
+        const installationEarnings = installationEarningsRaw; // No debit deduction for total earnings display either
         const totalEarnings = controlEarnings + installationEarnings;
         const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsNet;
 

@@ -459,7 +459,7 @@ const PatientDetail: React.FC = () => {
                         </div>
                         {(patient?.installationDebit || 0) > 0 && (
                           <div className="mt-2 text-[10px] text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                            Débito: -${(patient?.installationDebit || 0).toLocaleString()} (afecta ganancias)
+                            Débito: -${(patient?.installationDebit || 0).toLocaleString()}
                           </div>
                         )}
                       </div>
