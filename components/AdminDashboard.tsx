@@ -33,6 +33,12 @@ const AdminDashboard: React.FC = () => {
     const [selectedDentistId, setSelectedDentistId] = useState<string>('all');
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
+    // Date Filters State
+    const currentYear = new Date().getFullYear().toString();
+    const [selectedYear, setSelectedYear] = useState<string>(currentYear);
+    const [selectedStartMonth, setSelectedStartMonth] = useState<string>('01');
+    const [selectedEndMonth, setSelectedEndMonth] = useState<string>('12');
+
     // Filter only orthodontist dentists
     const orthodontists = useMemo(() => {
         return dentists.filter(d => !d.specialty || d.specialty === 'orthodontics');
@@ -54,6 +60,19 @@ const AdminDashboard: React.FC = () => {
         return orthodonticPatients.filter(p => p.dentistId === selectedDentistId);
     }, [orthodonticPatients, selectedDentistId]);
 
+    // Get available years from data
+    const availableYears = useMemo(() => {
+        const years = new Set<string>();
+        years.add(currentYear); // Always include current year
+        filteredPatients.forEach(p => {
+            p.records.forEach(r => {
+                const year = new Date(r.date).getFullYear().toString();
+                years.add(year);
+            });
+        });
+        return Array.from(years).sort((a, b) => b.localeCompare(a));
+    }, [filteredPatients, currentYear]);
+
     // Calculate monthly earnings and patient counts
     const monthlyData = useMemo(() => {
         const monthMap = new Map<string, { control: number; installation: number; patients: Set<string> }>();
@@ -62,14 +81,19 @@ const AdminDashboard: React.FC = () => {
             // Calculate installation net factor for proportional debit deduction
             const installationTotal = patient.installationTotal || 0;
             const installationDebit = patient.installationDebit || 0;
-            // If total is 0, factor is 0 (avoid division by zero). If debit >= total, factor is 0.
             const installationNetFactor = installationTotal > 0
                 ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
                 : 0;
 
             patient.records.forEach(record => {
                 const date = new Date(record.date);
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                const year = date.getFullYear().toString();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const monthKey = `${year}-${month}`;
+
+                // Filter by selected year and month range
+                if (year !== selectedYear) return;
+                if (month < selectedStartMonth || month > selectedEndMonth) return;
 
                 if (!monthMap.has(monthKey)) {
                     monthMap.set(monthKey, { control: 0, installation: 0, patients: new Set() });
@@ -98,9 +122,18 @@ const AdminDashboard: React.FC = () => {
                 total: data.control + data.installation,
                 patients: data.patients.size
             }));
-    }, [filteredPatients]);
+    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
 
-    // Summary statistics
+    // Calculate Period Total
+    const periodTotal = useMemo(() => {
+        return monthlyData.reduce((sum, item) => sum + item.total, 0);
+    }, [monthlyData]);
+
+    // Summary statistics (Global stats, not affected by chart filters except for monthly earnings display consistency if desired, 
+    // but usually summary cards show "Current Month" or "Total All Time". 
+    // The user asked for "Total del Período" specifically for the chart.
+    // I will keep the existing stats logic as is for the top cards (Current Month context) 
+    // and use `periodTotal` for the chart section.)
     const stats = useMemo(() => {
         const currentMonth = new Date().toISOString().slice(0, 7);
         let controlEarnings = 0;
@@ -108,18 +141,12 @@ const AdminDashboard: React.FC = () => {
         let totalDebits = 0;
         let totalControls = 0;
         let controlsThisMonth = 0;
-
-        // Monthly specific stats
         let monthlyControlEarnings = 0;
         let monthlyInstallationEarningsRaw = 0;
-
-        // We need to calculate monthly earnings with the same net factor logic for consistency
         let monthlyInstallationEarningsNet = 0;
 
         filteredPatients.forEach(patient => {
-            // Add up debits from patients (Total)
             totalDebits += patient.installationDebit || 0;
-
             const installationTotal = patient.installationTotal || 0;
             const installationDebit = patient.installationDebit || 0;
             const installationNetFactor = installationTotal > 0
@@ -145,8 +172,6 @@ const AdminDashboard: React.FC = () => {
 
         const installationEarnings = Math.max(installationEarningsRaw - totalDebits, 0);
         const totalEarnings = controlEarnings + installationEarnings;
-
-        // Monthly earnings now reflect the net installation (proportional)
         const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsNet;
 
         return {
@@ -166,6 +191,15 @@ const AdminDashboard: React.FC = () => {
         if (activeIndex === null || !monthlyData[activeIndex]) return null;
         return monthlyData[activeIndex].total;
     }, [activeIndex, monthlyData]);
+
+    const months = [
+        { value: '01', label: 'Enero' }, { value: '02', label: 'Febrero' },
+        { value: '03', label: 'Marzo' }, { value: '04', label: 'Abril' },
+        { value: '05', label: 'Mayo' }, { value: '06', label: 'Junio' },
+        { value: '07', label: 'Julio' }, { value: '08', label: 'Agosto' },
+        { value: '09', label: 'Septiembre' }, { value: '10', label: 'Octubre' },
+        { value: '11', label: 'Noviembre' }, { value: '12', label: 'Diciembre' }
+    ];
 
     return (
         <div className="space-y-8">
@@ -239,6 +273,59 @@ const AdminDashboard: React.FC = () => {
             <div className="grid grid-cols-1 gap-6">
                 {/* Monthly Earnings Chart - Full Width */}
                 <ChartCard title="Ganancias Mensuales (Desglose)">
+                    {/* Date Filters & Total */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 bg-slate-50 p-4 rounded-xl">
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Year Selector */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-600">Año:</span>
+                                <select
+                                    value={selectedYear}
+                                    onChange={(e) => setSelectedYear(e.target.value)}
+                                    className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                                >
+                                    {availableYears.map(year => (
+                                        <option key={year} value={year}>{year}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Month Range Selectors */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-600">Desde:</span>
+                                <select
+                                    value={selectedStartMonth}
+                                    onChange={(e) => setSelectedStartMonth(e.target.value)}
+                                    className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                                >
+                                    {months.map(m => (
+                                        <option key={m.value} value={m.value}>{m.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-600">Hasta:</span>
+                                <select
+                                    value={selectedEndMonth}
+                                    onChange={(e) => setSelectedEndMonth(e.target.value)}
+                                    className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                                >
+                                    {months.map(m => (
+                                        <option key={m.value} value={m.value} disabled={m.value < selectedStartMonth}>
+                                            {m.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Period Total Display */}
+                        <div className="flex items-center gap-2 bg-emerald-100 px-4 py-2 rounded-lg border border-emerald-200">
+                            <span className="text-sm font-semibold text-emerald-800">Total Período:</span>
+                            <span className="text-lg font-bold text-emerald-700">${periodTotal.toLocaleString()}</span>
+                        </div>
+                    </div>
+
                     {monthlyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart
@@ -276,7 +363,7 @@ const AdminDashboard: React.FC = () => {
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
-                        <EmptyState />
+                        <EmptyState message="No hay datos para el período seleccionado" />
                     )}
                 </ChartCard>
 
@@ -296,7 +383,7 @@ const AdminDashboard: React.FC = () => {
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
-                        <EmptyState />
+                        <EmptyState message="No hay datos para el período seleccionado" />
                     )}
                 </ChartCard>
             </div>
