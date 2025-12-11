@@ -55,6 +55,7 @@ const PatientDetail: React.FC = () => {
   // Payment States (Independent)
   const [newControlPayment, setNewControlPayment] = useState('');
   const [newInstallationPayment, setNewInstallationPayment] = useState('');
+  const [newDebitAmount, setNewDebitAmount] = useState('');
 
   // Editing existing record
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -128,6 +129,7 @@ const PatientDetail: React.FC = () => {
 
     const isOrthodontics = !dentist.specialty || dentist.specialty === 'orthodontics';
     const paymentAmount = parseFloat(newControlPayment) || 0;
+    const debitAmount = parseFloat(newDebitAmount) || 0;
 
     let recordData: Partial<ClinicalRecord>;
 
@@ -144,6 +146,7 @@ const PatientDetail: React.FC = () => {
         notes: newRecordNotes,
         paymentAmount: paymentAmount,
         installationPayment: installAmount,
+        debitAmount: debitAmount,
         isInstallation: installAmount > 0
       };
     } else {
@@ -163,7 +166,8 @@ const PatientDetail: React.FC = () => {
         toothNumbers: newToothNumbers.length > 0 ? newToothNumbers : undefined,
         toothDetails: details.length > 0 ? details : undefined,
         notes: newRecordNotes,
-        paymentAmount: paymentAmount
+        paymentAmount: paymentAmount,
+        debitAmount: debitAmount
       };
     }
 
@@ -214,6 +218,7 @@ const PatientDetail: React.FC = () => {
     setNewRecordNotes('');
     setNewControlPayment('');
     setNewInstallationPayment('');
+    setNewDebitAmount('');
     setIsRecordModalOpen(true);
   };
 
@@ -261,6 +266,8 @@ const PatientDetail: React.FC = () => {
         setNewInstallationPayment('');
       }
     }
+
+    setNewDebitAmount(record.debitAmount ? record.debitAmount.toString() : '');
 
     setIsRecordModalOpen(true);
   };
@@ -643,6 +650,11 @@ const PatientDetail: React.FC = () => {
                           ) : (
                             <span className="text-slate-700">${control.toLocaleString()}</span>
                           )}
+                          {(record.debitAmount || 0) > 0 && (
+                            <div className="text-[10px] text-red-500 mt-1">
+                              Débito: -${(record.debitAmount || 0).toLocaleString()}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right whitespace-nowrap align-top">
                           <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -890,35 +902,56 @@ const PatientDetail: React.FC = () => {
                 </div>
 
                 {isOrthodontics ? (
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={newControlPayment}
-                        onChange={e => setNewControlPayment(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                      />
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={newControlPayment}
+                          onChange={e => setNewControlPayment(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                        />
+                      </div>
+
+                      {isOrthodontics && (
+                        <div>
+                          <label className="block text-sm font-medium text-emerald-700 mb-1">Abono Instalación ($)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={newInstallationPayment}
+                            onChange={e => setNewInstallationPayment(e.target.value)}
+                            className="w-full px-3 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-red-600 mb-1">Débito ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={newDebitAmount}
+                          onChange={e => setNewDebitAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white text-slate-900"
+                        />
+                        <p className="text-[10px] text-red-400 mt-1">Gasto interno (afecta ganancia, no saldo)</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-emerald-700 mb-1">Abono Instalación ($)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={newInstallationPayment}
-                        onChange={e => setNewInstallationPayment(e.target.value)}
-                        className="w-full px-3 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
-                      />
+
+                    <div className="pt-4 flex gap-3">
                       {installationBalance > 0 && (
-                        <div className="text-[10px] text-emerald-600 mt-1 text-right">
+                        <div className="text-[10px] text-emerald-600 mt-1 text-right w-full">
                           Deuda: ${(installationBalance - (parseFloat(newInstallationPayment) || 0)).toLocaleString()}
                         </div>
                       )}
                     </div>
-                  </div>
+                  </>
                 ) : (
                   <div className="pt-2 border-t border-slate-100">
                     <label className="block text-sm font-medium text-slate-700 mb-1">Pago ($)</label>

@@ -107,7 +107,38 @@ const AdminDashboard: React.FC = () => {
 
                 // Add installation earnings (raw payment, no debit deduction)
                 const rawInstallation = (record.installationPayment || 0);
-                data.installation += rawInstallation;
+                const debit = (record.debitAmount || 0);
+
+                // Net earnings for this record = (Control + Installation) - Debit
+                // We subtract debit from the "control" part or "installation" part? 
+                // To keep it simple and correct in the total, we can subtract it from the total.
+                // But the chart has stacked bars. 
+                // Let's subtract it from 'control' for visualization if possible, or just track it separately?
+                // The user wants it to affect "Ganancia". 
+                // If we subtract from control, it might go negative. 
+                // Let's just subtract from the total sum in the map, but we need to attribute it to one of the bars.
+                // Better approach: Create a 'net' value. 
+                // If we subtract from control, visual might be weird.
+                // Let's subtract from control first, if negative, subtract remainder from installation.
+
+                let netControl = (record.paymentAmount || 0);
+                let netInstallation = rawInstallation;
+                let remainingDebit = debit;
+
+                if (netControl >= remainingDebit) {
+                    netControl -= remainingDebit;
+                    remainingDebit = 0;
+                } else {
+                    remainingDebit -= netControl;
+                    netControl = 0;
+                }
+
+                if (remainingDebit > 0) {
+                    netInstallation = Math.max(0, netInstallation - remainingDebit);
+                }
+
+                data.control += netControl;
+                data.installation += netInstallation;
 
                 data.patients.add(patient.id);
             });
@@ -157,30 +188,51 @@ const AdminDashboard: React.FC = () => {
             patient.records.forEach(record => {
                 const amount = (record.paymentAmount || 0);
                 const instAmount = (record.installationPayment || 0);
+                const debit = (record.debitAmount || 0);
 
                 controlEarnings += amount;
                 installationEarningsRaw += instAmount;
+                totalDebits += debit; // Track per-record debits
                 totalControls++;
 
                 if (record.date && record.date.startsWith(currentMonth)) {
                     controlsThisMonth++;
                     monthlyControlEarnings += amount;
                     monthlyInstallationEarningsRaw += instAmount;
-                    monthlyInstallationEarningsNet += instAmount; // No factor applied
+                    monthlyInstallationEarningsNet += instAmount;
+                    // Note: We'll subtract debits from the final monthly earnings sum
+                    totalDebits += debit; // Adding to total debits for stats
                 }
             });
         });
 
-        const installationEarnings = installationEarningsRaw; // No debit deduction for total earnings display either
-        const totalEarnings = controlEarnings + installationEarnings;
-        const monthlyEarnings = monthlyControlEarnings + monthlyInstallationEarningsNet;
+        const installationEarnings = installationEarningsRaw;
+        // Total Earnings = (Control + Installation) - Debits
+        // We need to be careful about which debits we are subtracting. 
+        // The 'totalDebits' above is summing ALL debits for all time? 
+        // Wait, the loop sums for all records. 
+        // So 'totalDebits' is total all time.
+
+        const totalEarnings = (controlEarnings + installationEarnings) - totalDebits;
+
+        // For monthly stats, we need to calculate monthly debits specifically
+        let monthlyDebits = 0;
+        filteredPatients.forEach(p => {
+            p.records.forEach(r => {
+                if (r.date && r.date.startsWith(currentMonth)) {
+                    monthlyDebits += (r.debitAmount || 0);
+                }
+            });
+        });
+
+        const monthlyEarnings = (monthlyControlEarnings + monthlyInstallationEarningsNet) - monthlyDebits;
 
         return {
             totalPatients: filteredPatients.length,
             totalEarnings,
             controlEarnings,
             installationEarnings,
-            totalDebits,
+            totalDebits, // Now reflects sum of record debits
             controlsThisMonth,
             monthlyEarnings,
             monthlyControlEarnings,
