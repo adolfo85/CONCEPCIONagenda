@@ -162,24 +162,6 @@ const AdminDashboard: React.FC = () => {
         };
     }, [filteredPatients]);
 
-    // Monthly controls by professional (for the new chart)
-    const monthlyControlsByProfessional = useMemo(() => {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const controlsMap = new Map<string, number>();
-
-        orthodonticPatients.forEach(patient => {
-            const dentist = orthodontists.find(d => d.id === patient.dentistId);
-            if (!dentist) return;
-
-            const monthlyControls = patient.records.filter(r => r.date.startsWith(currentMonth)).length;
-            controlsMap.set(dentist.name, (controlsMap.get(dentist.name) || 0) + monthlyControls);
-        });
-
-        return Array.from(controlsMap.entries())
-            .map(([name, controls]) => ({ name: name, controls })) // Full name
-            .filter(item => item.controls > 0);
-    }, [orthodonticPatients, orthodontists]);
-
     const activeTotal = useMemo(() => {
         if (activeIndex === null || !monthlyData[activeIndex]) return null;
         return monthlyData[activeIndex].total;
@@ -298,47 +280,25 @@ const AdminDashboard: React.FC = () => {
                     )}
                 </ChartCard>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Patients per Month */}
-                    <ChartCard title="Pacientes Atendidos por Mes">
-                        {monthlyData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={monthlyData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
-                                    <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                        formatter={(value: number) => [value, 'Pacientes']}
-                                    />
-                                    <Bar dataKey="patients" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <EmptyState />
-                        )}
-                    </ChartCard>
-
-                    {/* Controls This Month by Professional */}
-                    <ChartCard title="Controles Este Mes por Profesional">
-                        {monthlyControlsByProfessional.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={monthlyControlsByProfessional}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
-                                    <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                        formatter={(value: number) => [value, 'Controles']}
-                                    />
-                                    <Bar dataKey="controls" fill="#EC4899" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <EmptyState message="No hay controles este mes" />
-                        )}
-                    </ChartCard>
-                </div>
+                {/* Patients per Month */}
+                <ChartCard title="Pacientes Atendidos por Mes">
+                    {monthlyData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={monthlyData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
+                                <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                    formatter={(value: number) => [value, 'Pacientes']}
+                                />
+                                <Bar dataKey="patients" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <EmptyState />
+                    )}
+                </ChartCard>
             </div>
         </div>
     );
