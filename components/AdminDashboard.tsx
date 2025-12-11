@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Users, DollarSign, TrendingUp, Calendar, Filter } from 'lucide-react';
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { useDentists, usePatients } from '../services/queries';
 import { Patient, Dentist, ClinicalRecord } from '../types';
@@ -31,6 +31,7 @@ const AdminDashboard: React.FC = () => {
     const { data: dentists = [] } = useDentists();
     const { data: patients = [] } = usePatients();
     const [selectedDentistId, setSelectedDentistId] = useState<string>('all');
+    const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
     // Filter only orthodontist dentists
     const orthodontists = useMemo(() => {
@@ -81,16 +82,6 @@ const AdminDashboard: React.FC = () => {
 
                 // Add installation earnings with proportional debit applied
                 const rawInstallation = (record.installationPayment || 0);
-                // If the record is marked as installation but has no specific installationPayment, 
-                // legacy logic might have put it in paymentAmount. 
-                // However, our new logic in PatientDetail separates them.
-                // We will stick to the explicit fields.
-
-                // Note: If we want to be very precise with legacy data where `isInstallation` is true
-                // but `installationPayment` is undefined, we might need to check that.
-                // But `PatientDetail` seems to handle migration or display correctly.
-                // Let's assume `installationPayment` is the source of truth for installation money.
-
                 data.installation += rawInstallation * installationNetFactor;
 
                 data.patients.add(patient.id);
@@ -189,6 +180,11 @@ const AdminDashboard: React.FC = () => {
             .filter(item => item.controls > 0);
     }, [orthodonticPatients, orthodontists]);
 
+    const activeTotal = useMemo(() => {
+        if (activeIndex === null || !monthlyData[activeIndex]) return null;
+        return monthlyData[activeIndex].total;
+    }, [activeIndex, monthlyData]);
+
     return (
         <div className="space-y-8">
             {/* Header */}
@@ -263,18 +259,36 @@ const AdminDashboard: React.FC = () => {
                 <ChartCard title="Ganancias Mensuales (Desglose)">
                     {monthlyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={monthlyData}>
+                            <BarChart
+                                data={monthlyData}
+                                onMouseMove={(state: any) => {
+                                    if (state.isTooltipActive) {
+                                        setActiveIndex(state.activeTooltipIndex);
+                                    } else {
+                                        setActiveIndex(null);
+                                    }
+                                }}
+                                onMouseLeave={() => setActiveIndex(null)}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
                                 <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                    formatter={(value: number, name: string) => {
-                                        const label = name === 'installation' ? 'Instalación' : 'Controles';
-                                        return [`$${value.toLocaleString()}`, label];
-                                    }}
-                                />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend />
+                                {activeTotal !== null && (
+                                    <ReferenceLine
+                                        y={activeTotal}
+                                        stroke="#64748b"
+                                        strokeDasharray="3 3"
+                                        label={{
+                                            position: 'right',
+                                            value: `$${activeTotal.toLocaleString()}`,
+                                            fill: '#64748b',
+                                            fontSize: 12,
+                                            fontWeight: 'bold'
+                                        }}
+                                    />
+                                )}
                                 <Bar dataKey="installation" name="Instalación" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
                                 <Bar dataKey="control" name="Controles" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                             </BarChart>
@@ -328,6 +342,31 @@ const AdminDashboard: React.FC = () => {
             </div>
         </div>
     );
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
+        return (
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-lg">
+                <p className="text-sm font-bold text-slate-800 mb-2">{label}</p>
+                <div className="space-y-1">
+                    {payload.map((entry: any, index: number) => (
+                        <div key={index} className="flex items-center gap-2 text-sm">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                            <span className="text-slate-500 capitalize">{entry.name}:</span>
+                            <span className="font-semibold text-slate-700">${entry.value.toLocaleString()}</span>
+                        </div>
+                    ))}
+                    <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between gap-4">
+                        <span className="text-sm font-bold text-slate-800">Total:</span>
+                        <span className="text-sm font-bold text-slate-800">${total.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    return null;
 };
 
 // Helper Components
