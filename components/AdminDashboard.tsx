@@ -7,6 +7,15 @@ import {
 } from 'recharts';
 import { useDentists, usePatients } from '../services/queries';
 import { Patient, Dentist, ClinicalRecord } from '../types';
+import { getUsdBlueRate, formatCurrency, convertToUsd } from '../services/exchangeRate';
+
+// Estimated average blue dollar rates for historical fallback
+const ESTIMATED_HISTORICAL_RATES: Record<string, number> = {
+    '2022': 200,
+    '2023': 495,
+    '2024': 1150,
+    '2025': 1250,
+};
 
 // Color palette for charts
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
@@ -44,6 +53,15 @@ const AdminDashboard: React.FC = () => {
 
     // Expanded month details state (for monthly earnings chart)
     const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+
+    // Currency State
+    const [currency, setCurrency] = useState<'ARS' | 'USD'>('ARS');
+    const [currentUsdRate, setCurrentUsdRate] = useState<number>(0);
+
+    // Fetch current USD rate on mount
+    React.useEffect(() => {
+        getUsdBlueRate().then(rate => setCurrentUsdRate(rate));
+    }, []);
 
     // Filter only orthodontist dentists
     const orthodontists = useMemo(() => {
@@ -146,21 +164,50 @@ const AdminDashboard: React.FC = () => {
                 // Check if this is a consultation record
                 const isConsultation = record.recordType === 'consultation';
 
+                // Currency Conversion Logic
+                let finalControl = netControl;
+                let finalInstallation = netInstallation;
+
+                if (currency === 'USD') {
+                    // Use stored rate if available, otherwise fallback to estimated historical rate
+                    const rateToUse = record.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+
+                    if (rateToUse > 0) {
+                        finalControl = Math.round((netControl / rateToUse) * 100) / 100;
+                        finalInstallation = Math.round((netInstallation / rateToUse) * 100) / 100;
+                    }
+                }
+
                 if (isConsultation) {
-                    data.consultation += netControl;
+                    data.consultation += finalControl;
                     data.consultationCount++;
-                    if (netControl > 0) {
-                        data.details.push({ name: patient.name, type: 'consultation', amount: netControl, date: record.date });
+                    if (finalControl > 0) {
+                        data.details.push({
+                            name: patient.name,
+                            type: 'consultation',
+                            amount: finalControl,
+                            date: record.date
+                        });
                     }
                 } else {
-                    data.control += netControl;
-                    data.installation += netInstallation;
+                    data.control += finalControl;
+                    data.installation += finalInstallation;
                     data.controlCount++;
-                    if (netControl > 0) {
-                        data.details.push({ name: patient.name, type: 'control', amount: netControl, date: record.date });
+                    if (finalControl > 0) {
+                        data.details.push({
+                            name: patient.name,
+                            type: 'control',
+                            amount: finalControl,
+                            date: record.date
+                        });
                     }
-                    if (netInstallation > 0) {
-                        data.details.push({ name: patient.name, type: 'installation', amount: netInstallation, date: record.date });
+                    if (finalInstallation > 0) {
+                        data.details.push({
+                            name: patient.name,
+                            type: 'installation',
+                            amount: finalInstallation,
+                            date: record.date
+                        });
                     }
                 }
 
@@ -216,7 +263,14 @@ const AdminDashboard: React.FC = () => {
 
                 if (month < selectedStartMonth || month > selectedEndMonth) return;
 
-                const earnings = (record.paymentAmount || 0) + (record.installationPayment || 0) - (record.debitAmount || 0);
+                let earnings = (record.paymentAmount || 0) + (record.installationPayment || 0) - (record.debitAmount || 0);
+
+                if (currency === 'USD') {
+                    const rateToUse = record.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+                    if (rateToUse > 0) {
+                        earnings = Math.round((earnings / rateToUse) * 100) / 100;
+                    }
+                }
 
                 if (year === selectedYear) {
                     currYearMap.set(month, (currYearMap.get(month) || 0) + earnings);
@@ -244,7 +298,7 @@ const AdminDashboard: React.FC = () => {
         }
 
         return { data: result, currentYear: selectedYear, previousYear };
-    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
+    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth, currency, currentUsdRate]);
 
     // ============== NEW: Income Distribution Data ==============
     const incomeDistribution = useMemo(() => {
@@ -262,12 +316,35 @@ const AdminDashboard: React.FC = () => {
                 if (month < selectedStartMonth || month > selectedEndMonth) return;
 
                 const debit = record.debitAmount || 0;
+                let paymentAmount = record.paymentAmount || 0;
+                let installationPayment = record.installationPayment || 0;
+
+                if (currency === 'USD') {
+                    const rateToUse = record.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+                    if (rateToUse > 0) {
+                        paymentAmount = Math.round((paymentAmount / rateToUse) * 100) / 100;
+                        installationPayment = Math.round((installationPayment / rateToUse) * 100) / 100;
+                        // Note: debit should also be converted if it's in ARS, assuming it is.
+                        // But for simplicity in this chart we are just subtracting it from paymentAmount if it's a consultation?
+                        // The original logic was: consultations += Math.max(0, (record.paymentAmount || 0) - debit);
+                        // So we should convert debit too.
+                    }
+                }
 
                 if (record.recordType === 'consultation') {
-                    consultations += Math.max(0, (record.paymentAmount || 0) - debit);
+                    // For consultation, debit is subtracted from payment
+                    let finalAmount = paymentAmount;
+                    if (currency === 'USD') {
+                        const rateToUse = record.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+                        const convertedDebit = rateToUse > 0 ? Math.round((debit / rateToUse) * 100) / 100 : 0;
+                        finalAmount = Math.max(0, finalAmount - convertedDebit);
+                    } else {
+                        finalAmount = Math.max(0, finalAmount - debit);
+                    }
+                    consultations += finalAmount;
                 } else {
-                    installations += Math.max(0, (record.installationPayment || 0));
-                    controls += Math.max(0, (record.paymentAmount || 0));
+                    installations += Math.max(0, installationPayment);
+                    controls += Math.max(0, paymentAmount);
                 }
             });
         });
@@ -279,7 +356,7 @@ const AdminDashboard: React.FC = () => {
             { name: 'Controles', value: controls, color: '#3B82F6', percentage: total > 0 ? Math.round(controls / total * 100) : 0 },
             { name: 'Consultas', value: consultations, color: '#F97316', percentage: total > 0 ? Math.round(consultations / total * 100) : 0 }
         ].filter(item => item.value > 0);
-    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
+    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth, currency, currentUsdRate]);
 
     // ============== NEW: Active/Inactive Patients Data ==============
     const patientActivityData = useMemo(() => {
@@ -371,15 +448,22 @@ const AdminDashboard: React.FC = () => {
         filteredPatients.forEach(patient => {
             totalDebits += patient.installationDebit || 0;
             const installationTotal = patient.installationTotal || 0;
-            // const installationDebit = patient.installationDebit || 0;
-            // const installationNetFactor = installationTotal > 0
-            //     ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
-            //     : 0;
 
             patient.records.forEach(record => {
-                const amount = (record.paymentAmount || 0);
-                const instAmount = (record.installationPayment || 0);
-                const debit = (record.debitAmount || 0);
+                let amount = (record.paymentAmount || 0);
+                let instAmount = (record.installationPayment || 0);
+                let debit = (record.debitAmount || 0);
+
+                if (currency === 'USD') {
+                    const date = new Date(record.date);
+                    const year = date.getFullYear().toString();
+                    const rateToUse = record.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+                    if (rateToUse > 0) {
+                        amount = Math.round((amount / rateToUse) * 100) / 100;
+                        instAmount = Math.round((instAmount / rateToUse) * 100) / 100;
+                        debit = Math.round((debit / rateToUse) * 100) / 100;
+                    }
+                }
 
                 controlEarnings += amount;
                 installationEarningsRaw += instAmount;
@@ -392,18 +476,12 @@ const AdminDashboard: React.FC = () => {
                     monthlyInstallationEarningsRaw += instAmount;
                     monthlyInstallationEarningsNet += instAmount;
                     // Note: We'll subtract debits from the final monthly earnings sum
-                    totalDebits += debit; // Adding to total debits for stats
+                    // totalDebits is already accumulated above, but for monthly calculation we need to subtract monthly debits
                 }
             });
         });
 
         const installationEarnings = installationEarningsRaw;
-        // Total Earnings = (Control + Installation) - Debits
-        // We need to be careful about which debits we are subtracting. 
-        // The 'totalDebits' above is summing ALL debits for all time? 
-        // Wait, the loop sums for all records. 
-        // So 'totalDebits' is total all time.
-
         const totalEarnings = (controlEarnings + installationEarnings) - totalDebits;
 
         // For monthly stats, we need to calculate monthly debits specifically
@@ -411,7 +489,16 @@ const AdminDashboard: React.FC = () => {
         filteredPatients.forEach(p => {
             p.records.forEach(r => {
                 if (r.date && r.date.startsWith(currentMonth)) {
-                    monthlyDebits += (r.debitAmount || 0);
+                    let debit = (r.debitAmount || 0);
+                    if (currency === 'USD') {
+                        const date = new Date(r.date);
+                        const year = date.getFullYear().toString();
+                        const rateToUse = r.usdRate || ESTIMATED_HISTORICAL_RATES[year] || currentUsdRate || 1200;
+                        if (rateToUse > 0) {
+                            debit = Math.round((debit / rateToUse) * 100) / 100;
+                        }
+                    }
+                    monthlyDebits += debit;
                 }
             });
         });
@@ -429,7 +516,8 @@ const AdminDashboard: React.FC = () => {
             monthlyControlEarnings,
             monthlyInstallationEarningsNet
         };
-    }, [filteredPatients]);
+    }, [filteredPatients, currency, currentUsdRate]);
+
 
     const activeTotal = useMemo(() => {
         if (activeIndex === null || !monthlyData[activeIndex]) return null;
@@ -493,15 +581,15 @@ const AdminDashboard: React.FC = () => {
                         </div>
                         <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">Ingresos Este Mes</span>
                     </div>
-                    <div className="text-2xl font-bold text-slate-800">${stats.monthlyEarnings.toLocaleString()}</div>
+                    <div className="text-2xl font-bold text-slate-800">{formatCurrency(stats.monthlyEarnings, currency)}</div>
                     <div className="mt-2 flex flex-col gap-1 text-xs">
                         <div className="flex justify-between text-emerald-600">
                             <span>Instalaciones:</span>
-                            <span className="font-semibold">${stats.monthlyInstallationEarningsNet.toLocaleString()}</span>
+                            <span className="font-semibold">{formatCurrency(stats.monthlyInstallationEarningsNet, currency)}</span>
                         </div>
                         <div className="flex justify-between text-blue-600">
                             <span>Controles:</span>
-                            <span className="font-semibold">${stats.monthlyControlEarnings.toLocaleString()}</span>
+                            <span className="font-semibold">{formatCurrency(stats.monthlyControlEarnings, currency)}</span>
                         </div>
                     </div>
                 </div>
@@ -563,21 +651,32 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Period Total Display */}
+                        {/* Period Total Display & Currency Toggle */}
                         <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 bg-emerald-100 px-4 py-2 rounded-lg border border-emerald-200">
-                                <span className="text-sm font-semibold text-emerald-800">Total Período:</span>
-                                <span className="text-lg font-bold text-emerald-700">${periodTotal.toLocaleString()}</span>
+                            <div className="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
+                                <button
+                                    onClick={() => setCurrency('ARS')}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currency === 'ARS'
+                                        ? 'bg-white text-blue-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    ARS
+                                </button>
+                                <button
+                                    onClick={() => setCurrency('USD')}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${currency === 'USD'
+                                        ? 'bg-white text-green-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    USD
+                                </button>
                             </div>
-                            <div className="flex items-center gap-3 bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
-                                <div className="flex items-center gap-1">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                    <span className="text-sm text-slate-600">{periodCounts.controls} <span className="text-xs">controles</span></span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                                    <span className="text-sm text-slate-600">{periodCounts.consultations} <span className="text-xs">consultas</span></span>
-                                </div>
+                            <div className="bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100">
+                                <span className="text-sm text-emerald-800 font-medium">
+                                    Total Período: {formatCurrency(periodTotal, currency)}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -598,7 +697,11 @@ const AdminDashboard: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
                                 <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
-                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+                                <Tooltip
+                                    content={<CustomTooltip />}
+                                    cursor={{ fill: 'transparent' }}
+                                    formatter={(value: number) => [formatCurrency(value, currency), '']}
+                                />
                                 <Legend />
                                 {activeTotal !== null && (
                                     <ReferenceLine
@@ -607,7 +710,7 @@ const AdminDashboard: React.FC = () => {
                                         strokeDasharray="3 3"
                                         label={{
                                             position: 'right',
-                                            value: `$${activeTotal.toLocaleString()}`,
+                                            value: formatCurrency(activeTotal, currency),
                                             fill: '#64748b',
                                             fontSize: 12,
                                             fontWeight: 'bold'
@@ -642,23 +745,23 @@ const AdminDashboard: React.FC = () => {
                                                 <div className="flex items-center gap-2">
                                                     {month.installation > 0 && (
                                                         <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                                                            Inst: ${month.installation.toLocaleString()}
+                                                            Inst: {formatCurrency(month.installation, currency)}
                                                         </span>
                                                     )}
                                                     {month.control > 0 && (
                                                         <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                                            Ctrl: ${month.control.toLocaleString()}
+                                                            Ctrl: {formatCurrency(month.control, currency)}
                                                         </span>
                                                     )}
                                                     {month.consultation > 0 && (
                                                         <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-                                                            Cons: ${month.consultation.toLocaleString()}
+                                                            Cons: {formatCurrency(month.consultation, currency)}
                                                         </span>
                                                     )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm font-bold text-slate-800">${month.total.toLocaleString()}</span>
+                                                <span className="text-sm font-bold text-slate-800">{formatCurrency(month.total, currency)}</span>
                                                 {expandedMonth === month.monthKey ?
                                                     <ChevronUp size={16} className="text-slate-500" /> :
                                                     <ChevronDown size={16} className="text-slate-500" />
@@ -683,17 +786,17 @@ const AdminDashboard: React.FC = () => {
                                                                 <td className="p-2 text-slate-700">{detail.name}</td>
                                                                 <td className="p-2">
                                                                     <span className={`px-2 py-0.5 rounded-full text-xs ${detail.type === 'installation'
-                                                                            ? 'bg-emerald-100 text-emerald-700'
-                                                                            : detail.type === 'consultation'
-                                                                                ? 'bg-orange-100 text-orange-700'
-                                                                                : 'bg-blue-100 text-blue-700'
+                                                                        ? 'bg-emerald-100 text-emerald-700'
+                                                                        : detail.type === 'consultation'
+                                                                            ? 'bg-orange-100 text-orange-700'
+                                                                            : 'bg-blue-100 text-blue-700'
                                                                         }`}>
                                                                         {detail.type === 'installation' ? 'Instalación' :
                                                                             detail.type === 'consultation' ? 'Consulta' : 'Control'}
                                                                     </span>
                                                                 </td>
                                                                 <td className="p-2 text-right font-medium text-slate-800">
-                                                                    ${detail.amount.toLocaleString()}
+                                                                    {formatCurrency(detail.amount, currency)}
                                                                 </td>
                                                             </tr>
                                                         ))}
@@ -739,7 +842,7 @@ const AdminDashboard: React.FC = () => {
                                     <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
                                     <Tooltip
                                         contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                                        formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name]}
+                                        formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
                                     />
                                     <Legend />
                                     <Line
@@ -798,7 +901,7 @@ const AdminDashboard: React.FC = () => {
                                         ))}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                                        formatter={(value: number) => [formatCurrency(value, currency), '']}
                                         contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                                     />
                                 </PieChart>
@@ -812,7 +915,7 @@ const AdminDashboard: React.FC = () => {
                                             <span className="text-sm font-medium text-slate-700">{item.name}</span>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-sm font-bold text-slate-800">${item.value.toLocaleString()}</div>
+                                            <div className="text-sm font-bold text-slate-800">{formatCurrency(item.value, currency)}</div>
                                             <div className="text-xs text-slate-500">{item.percentage}%</div>
                                         </div>
                                     </div>

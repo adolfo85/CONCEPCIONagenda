@@ -35,6 +35,7 @@ export interface ClinicalRecord {
   paymentAmount: number; // Represents Control Payment or general payment
   installationPayment?: number; // Represents Installation Payment (orthodontics only)
   debitAmount?: number; // Internal expense/debit for this record (affects earnings, not patient balance)
+  usdRate?: number; // USD Blue exchange rate at the time of payment
   isInstallation?: boolean; // Deprecated in favor of installationPayment value
 }
 

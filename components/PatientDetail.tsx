@@ -6,6 +6,7 @@ import { Patient, ClinicalRecord, ArchWireType, ServiceType, ToothSurface, Tooth
 import { generateId } from '../services/storage';
 import { usePatients, useDentists, useServiceTypes, useUpdatePatient, useAddServiceType } from '../services/queries';
 import { ARCH_WIRES, DEFAULT_SERVICE_TYPES as SERVICE_TYPES, TOOTH_SURFACES, TOOTH_NUMBERS } from '../constants';
+import { getUsdBlueRate } from '../services/exchangeRate';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -128,7 +129,7 @@ const PatientDetail: React.FC = () => {
     setRecordToDelete(null);
   };
 
-  const handleSaveRecord = (e: React.FormEvent) => {
+  const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!patient || !dentist) return;
 
@@ -136,36 +137,44 @@ const PatientDetail: React.FC = () => {
     const paymentAmount = parseFloat(newControlPayment) || 0;
     const debitAmount = parseFloat(newDebitAmount) || 0;
 
+    // Fetch current USD Blue rate
+    let usdRate: number | undefined;
+    try {
+      usdRate = await getUsdBlueRate();
+    } catch (error) {
+      console.error("Failed to fetch USD rate", error);
+    }
+
     let recordData: Partial<ClinicalRecord>;
 
-    if (isOrthodontics) {
-      if (isConsultationMode) {
-        // Orthodontics consultation (no arches)
-        recordData = {
-          date: newRecordDate,
-          recordType: 'consultation',
-          notes: newRecordNotes,
-          paymentAmount: paymentAmount,
-          debitAmount: debitAmount
-        };
-      } else {
-        // Orthodontics control record
-        const installAmount = parseFloat(newInstallationPayment) || 0;
-        recordData = {
-          date: newRecordDate,
-          recordType: 'control',
-          upperArch: newUpperArch,
-          lowerArch: newLowerArch,
-          upperMonths: newUpperMonths,
-          lowerMonths: newLowerMonths,
-          monthsActive: Math.max(newUpperMonths, newLowerMonths),
-          notes: newRecordNotes,
-          paymentAmount: paymentAmount,
-          installationPayment: installAmount,
-          debitAmount: debitAmount,
-          isInstallation: installAmount > 0
-        };
-      }
+    if (isConsultationMode) {
+      // Consultation record (simplified)
+      recordData = {
+        date: newRecordDate,
+        recordType: 'consultation',
+        notes: newRecordNotes,
+        paymentAmount: paymentAmount,
+        debitAmount: debitAmount,
+        usdRate: usdRate // Save the rate
+      };
+    } else if (isOrthodontics) {
+      // Orthodontics record
+      const installAmount = parseFloat(newInstallationPayment) || 0;
+      recordData = {
+        date: newRecordDate,
+        recordType: 'control',
+        upperArch: newUpperArch,
+        lowerArch: newLowerArch,
+        upperMonths: newUpperMonths,
+        lowerMonths: newLowerMonths,
+        monthsActive: Math.max(newUpperMonths, newLowerMonths),
+        notes: newRecordNotes,
+        paymentAmount: paymentAmount,
+        installationPayment: installAmount,
+        debitAmount: debitAmount,
+        isInstallation: installAmount > 0,
+        usdRate: usdRate // Save the rate
+      };
     } else {
       // General dentistry record
       // Construct toothDetails based on selected numbers and their specific surfaces
@@ -184,7 +193,8 @@ const PatientDetail: React.FC = () => {
         toothDetails: details.length > 0 ? details : undefined,
         notes: newRecordNotes,
         paymentAmount: paymentAmount,
-        debitAmount: debitAmount
+        debitAmount: debitAmount,
+        usdRate: usdRate // Save the rate
       };
     }
 

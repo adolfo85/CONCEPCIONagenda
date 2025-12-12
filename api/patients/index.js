@@ -62,6 +62,7 @@ export default async function handler(req, res) {
                                 paymentAmount: parseFloat(r.payment_amount || 0),
                                 installationPayment: parseFloat(r.installation_payment || 0),
                                 debitAmount: parseFloat(r.debit_amount || 0),
+                                usdRate: r.usd_rate ? parseFloat(r.usd_rate) : undefined,
                                 isInstallation: r.is_installation
                             };
                         })

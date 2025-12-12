@@ -56,6 +56,7 @@ export async function handler(event, context) {
                                 paymentAmount: parseFloat(r.payment_amount || 0),
                                 installationPayment: parseFloat(r.installation_payment || 0),
                                 debitAmount: parseFloat(r.debit_amount || 0),
+                                usdRate: r.usd_rate ? parseFloat(r.usd_rate) : undefined,
                                 isInstallation: r.is_installation
                             };
                         })
@@ -118,13 +119,13 @@ export async function handler(event, context) {
               id, patient_id, date, record_type,
               upper_arch, lower_arch, upper_months, lower_months, months_active,
               service_type, tooth_numbers, tooth_surfaces, tooth_details,
-              notes, payment_amount, installation_payment, debit_amount, is_installation
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+              notes, payment_amount, installation_payment, debit_amount, usd_rate, is_installation
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
                         [
                             r.id, patientId, r.date, r.recordType || 'control',
                             r.upperArch, r.lowerArch, r.upperMonths, r.lowerMonths, r.monthsActive,
                             r.serviceType, JSON.stringify(r.toothNumbers), JSON.stringify(r.toothSurfaces), JSON.stringify(r.toothDetails),
-                            r.notes, r.paymentAmount, r.installationPayment, r.debitAmount || 0, r.isInstallation
+                            r.notes, r.paymentAmount, r.installationPayment, r.debitAmount || 0, r.usdRate || null, r.isInstallation
                         ]
                     );
                 }
