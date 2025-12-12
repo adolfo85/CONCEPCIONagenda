@@ -48,6 +48,7 @@ export default async function handler(req, res) {
                             return {
                                 id: r.id,
                                 date: dateStr,
+                                recordType: r.record_type || 'control',
                                 upperArch: r.upper_arch,
                                 lowerArch: r.lower_arch,
                                 upperMonths: r.upper_months ? parseFloat(r.upper_months) : undefined,
@@ -60,6 +61,7 @@ export default async function handler(req, res) {
                                 notes: r.notes,
                                 paymentAmount: parseFloat(r.payment_amount || 0),
                                 installationPayment: parseFloat(r.installation_payment || 0),
+                                debitAmount: parseFloat(r.debit_amount || 0),
                                 isInstallation: r.is_installation
                             };
                         })

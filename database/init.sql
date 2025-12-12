@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS clinical_records (
     id TEXT PRIMARY KEY,
     patient_id TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
     date DATE NOT NULL,
+    record_type TEXT DEFAULT 'control', -- 'control' or 'consultation'
     
     -- Campos de Ortodoncia
     upper_arch TEXT,
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS clinical_records (
     notes TEXT,
     payment_amount NUMERIC(10, 2) DEFAULT 0,
     installation_payment NUMERIC(10, 2) DEFAULT 0,
+    debit_amount NUMERIC(10, 2) DEFAULT 0,
     is_installation BOOLEAN DEFAULT FALSE,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
