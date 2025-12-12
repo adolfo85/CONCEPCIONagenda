@@ -672,8 +672,16 @@ const PatientDetail: React.FC = () => {
                         <td className="px-6 py-4 text-slate-700 font-mono text-right align-top">
                           {isOrthodontics ? (
                             <div className="flex flex-col items-end gap-1">
-                              {displayControl > 0 && (
-                                <span className="text-slate-700">Control: ${displayControl.toLocaleString()}</span>
+                              {record.recordType === 'consultation' ? (
+                                // Consultation payment display (orange)
+                                displayControl > 0 && (
+                                  <span className="text-orange-600">Consulta: ${displayControl.toLocaleString()}</span>
+                                )
+                              ) : (
+                                // Control payment display (default)
+                                displayControl > 0 && (
+                                  <span className="text-slate-700">Control: ${displayControl.toLocaleString()}</span>
+                                )
                               )}
                               {install > 0 && (
                                 <span className="text-xs text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 font-bold">
