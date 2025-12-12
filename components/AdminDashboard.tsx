@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Users, DollarSign, TrendingUp, Calendar, Filter, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, TrendingUp, Calendar, Filter, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
@@ -38,6 +38,9 @@ const AdminDashboard: React.FC = () => {
     const [selectedYear, setSelectedYear] = useState<string>(currentYear);
     const [selectedStartMonth, setSelectedStartMonth] = useState<string>('01');
     const [selectedEndMonth, setSelectedEndMonth] = useState<string>('12');
+
+    // Expanded patient lists state
+    const [expandedList, setExpandedList] = useState<'active' | 'atRisk' | 'inactive' | null>(null);
 
     // Filter only orthodontist dentists
     const orthodontists = useMemo(() => {
@@ -263,14 +266,13 @@ const AdminDashboard: React.FC = () => {
         const sixMonthsAgo = new Date(today);
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        let active = 0; // Visited in last 3 months
-        let atRisk = 0; // 3-6 months without visit
-        let inactive = 0; // 6+ months without visit
+        const activePatients: { name: string; lastVisit: string; monthsAgo: number }[] = [];
         const atRiskPatients: { name: string; lastVisit: string; monthsAgo: number }[] = [];
+        const inactivePatients: { name: string; lastVisit: string; monthsAgo: number }[] = [];
 
         filteredPatients.forEach(patient => {
             if (patient.records.length === 0) {
-                inactive++;
+                inactivePatients.push({ name: patient.name, lastVisit: 'Sin visitas', monthsAgo: 999 });
                 return;
             }
 
@@ -280,22 +282,21 @@ const AdminDashboard: React.FC = () => {
             );
             const lastVisit = new Date(sortedRecords[0].date);
             const monthsAgo = Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24 * 30));
+            const patientInfo = { name: patient.name, lastVisit: sortedRecords[0].date, monthsAgo };
 
             if (lastVisit >= threeMonthsAgo) {
-                active++;
+                activePatients.push(patientInfo);
             } else if (lastVisit >= sixMonthsAgo) {
-                atRisk++;
-                if (atRiskPatients.length < 5) {
-                    atRiskPatients.push({
-                        name: patient.name,
-                        lastVisit: sortedRecords[0].date,
-                        monthsAgo
-                    });
-                }
+                atRiskPatients.push(patientInfo);
             } else {
-                inactive++;
+                inactivePatients.push(patientInfo);
             }
         });
+
+        // Sort each list by monthsAgo (most recent first for active, oldest first for inactive)
+        activePatients.sort((a, b) => a.monthsAgo - b.monthsAgo);
+        atRiskPatients.sort((a, b) => b.monthsAgo - a.monthsAgo);
+        inactivePatients.sort((a, b) => b.monthsAgo - a.monthsAgo);
 
         // New patients by month (last 12 months)
         const newPatientsByMonth: { month: string; count: number }[] = [];
@@ -316,13 +317,15 @@ const AdminDashboard: React.FC = () => {
 
         return {
             distribution: [
-                { name: 'Activos', value: active, color: '#10B981' },
-                { name: 'En riesgo', value: atRisk, color: '#F59E0B' },
-                { name: 'Inactivos', value: inactive, color: '#EF4444' }
+                { name: 'Activos', value: activePatients.length, color: '#10B981' },
+                { name: 'En riesgo', value: atRiskPatients.length, color: '#F59E0B' },
+                { name: 'Inactivos', value: inactivePatients.length, color: '#EF4444' }
             ].filter(item => item.value > 0),
+            activePatients,
             atRiskPatients,
+            inactivePatients,
             newPatientsByMonth,
-            totals: { active, atRisk, inactive }
+            totals: { active: activePatients.length, atRisk: atRiskPatients.length, inactive: inactivePatients.length }
         };
     }, [filteredPatients]);
 
@@ -762,18 +765,92 @@ const AdminDashboard: React.FC = () => {
                                 <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
                                     <div className="flex items-center gap-2 mb-2">
                                         <AlertTriangle size={16} className="text-amber-600" />
-                                        <span className="text-sm font-medium text-amber-800">Pacientes en riesgo de deserción</span>
-                                    </div>
-                                    <div className="space-y-1">
-                                        {patientActivityData.atRiskPatients.map((p, idx) => (
-                                            <div key={idx} className="text-xs text-amber-700 flex justify-between">
-                                                <span>{p.name}</span>
-                                                <span className="text-amber-600">{p.monthsAgo} meses sin visita</span>
-                                            </div>
-                                        ))}
+                                        <span className="text-sm font-medium text-amber-800">Alerta: {patientActivityData.atRiskPatients.length} pacientes en riesgo</span>
                                     </div>
                                 </div>
                             )}
+
+                            {/* Expandable Patient Lists */}
+                            <div className="mt-4 space-y-2">
+                                {/* Active Patients List */}
+                                <div className="border border-emerald-200 rounded-lg overflow-hidden">
+                                    <button
+                                        onClick={() => setExpandedList(expandedList === 'active' ? null : 'active')}
+                                        className="w-full flex items-center justify-between p-3 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                                            <span className="text-sm font-medium text-emerald-800">Pacientes Activos</span>
+                                            <span className="text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">{patientActivityData.totals.active}</span>
+                                        </div>
+                                        {expandedList === 'active' ? <ChevronUp size={16} className="text-emerald-600" /> : <ChevronDown size={16} className="text-emerald-600" />}
+                                    </button>
+                                    {expandedList === 'active' && patientActivityData.activePatients.length > 0 && (
+                                        <div className="max-h-40 overflow-y-auto bg-white">
+                                            {patientActivityData.activePatients.map((p, idx) => (
+                                                <div key={idx} className="px-3 py-2 text-xs border-t border-emerald-100 flex justify-between hover:bg-emerald-50">
+                                                    <span className="text-slate-700">{p.name}</span>
+                                                    <span className="text-emerald-600">
+                                                        {p.monthsAgo === 0 ? 'Este mes' : `Hace ${p.monthsAgo} mes${p.monthsAgo > 1 ? 'es' : ''}`}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* At Risk Patients List */}
+                                <div className="border border-amber-200 rounded-lg overflow-hidden">
+                                    <button
+                                        onClick={() => setExpandedList(expandedList === 'atRisk' ? null : 'atRisk')}
+                                        className="w-full flex items-center justify-between p-3 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-amber-500" />
+                                            <span className="text-sm font-medium text-amber-800">En Riesgo</span>
+                                            <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">{patientActivityData.totals.atRisk}</span>
+                                        </div>
+                                        {expandedList === 'atRisk' ? <ChevronUp size={16} className="text-amber-600" /> : <ChevronDown size={16} className="text-amber-600" />}
+                                    </button>
+                                    {expandedList === 'atRisk' && patientActivityData.atRiskPatients.length > 0 && (
+                                        <div className="max-h-40 overflow-y-auto bg-white">
+                                            {patientActivityData.atRiskPatients.map((p, idx) => (
+                                                <div key={idx} className="px-3 py-2 text-xs border-t border-amber-100 flex justify-between hover:bg-amber-50">
+                                                    <span className="text-slate-700">{p.name}</span>
+                                                    <span className="text-amber-600">{p.monthsAgo} meses sin visita</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Inactive Patients List */}
+                                <div className="border border-red-200 rounded-lg overflow-hidden">
+                                    <button
+                                        onClick={() => setExpandedList(expandedList === 'inactive' ? null : 'inactive')}
+                                        className="w-full flex items-center justify-between p-3 bg-red-50 hover:bg-red-100 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-red-500" />
+                                            <span className="text-sm font-medium text-red-800">Inactivos</span>
+                                            <span className="text-xs bg-red-200 text-red-800 px-2 py-0.5 rounded-full">{patientActivityData.totals.inactive}</span>
+                                        </div>
+                                        {expandedList === 'inactive' ? <ChevronUp size={16} className="text-red-600" /> : <ChevronDown size={16} className="text-red-600" />}
+                                    </button>
+                                    {expandedList === 'inactive' && patientActivityData.inactivePatients.length > 0 && (
+                                        <div className="max-h-40 overflow-y-auto bg-white">
+                                            {patientActivityData.inactivePatients.map((p, idx) => (
+                                                <div key={idx} className="px-3 py-2 text-xs border-t border-red-100 flex justify-between hover:bg-red-50">
+                                                    <span className="text-slate-700">{p.name}</span>
+                                                    <span className="text-red-600">
+                                                        {p.lastVisit === 'Sin visitas' ? 'Sin visitas' : `${p.monthsAgo}+ meses`}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         {/* New Patients Trend */}
