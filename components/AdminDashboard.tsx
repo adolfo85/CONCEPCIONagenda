@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Users, DollarSign, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, TrendingUp, Calendar, Filter, AlertTriangle } from 'lucide-react';
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
@@ -171,6 +171,160 @@ const AdminDashboard: React.FC = () => {
             consultations: acc.consultations + item.consultationCount
         }), { controls: 0, consultations: 0 });
     }, [monthlyData]);
+
+    // ============== NEW: Year-over-Year Comparison Data ==============
+    const yearComparisonData = useMemo(() => {
+        const currentYearNum = parseInt(selectedYear);
+        const previousYearNum = currentYearNum - 1;
+        const previousYear = previousYearNum.toString();
+
+        // Calculate data for previous year with same month range
+        const prevYearMap = new Map<string, number>();
+        const currYearMap = new Map<string, number>();
+
+        filteredPatients.forEach(patient => {
+            patient.records.forEach(record => {
+                const date = new Date(record.date);
+                const year = date.getFullYear().toString();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+
+                if (month < selectedStartMonth || month > selectedEndMonth) return;
+
+                const earnings = (record.paymentAmount || 0) + (record.installationPayment || 0) - (record.debitAmount || 0);
+
+                if (year === selectedYear) {
+                    currYearMap.set(month, (currYearMap.get(month) || 0) + earnings);
+                } else if (year === previousYear) {
+                    prevYearMap.set(month, (prevYearMap.get(month) || 0) + earnings);
+                }
+            });
+        });
+
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const result = [];
+
+        for (let m = parseInt(selectedStartMonth); m <= parseInt(selectedEndMonth); m++) {
+            const monthKey = String(m).padStart(2, '0');
+            const curr = currYearMap.get(monthKey) || 0;
+            const prev = prevYearMap.get(monthKey) || 0;
+            const growth = prev > 0 ? ((curr - prev) / prev * 100) : (curr > 0 ? 100 : 0);
+
+            result.push({
+                month: monthNames[m - 1],
+                [`${selectedYear}`]: curr,
+                [`${previousYear}`]: prev,
+                growth: Math.round(growth * 10) / 10
+            });
+        }
+
+        return { data: result, currentYear: selectedYear, previousYear };
+    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
+
+    // ============== NEW: Income Distribution Data ==============
+    const incomeDistribution = useMemo(() => {
+        let installations = 0;
+        let controls = 0;
+        let consultations = 0;
+
+        filteredPatients.forEach(patient => {
+            patient.records.forEach(record => {
+                const date = new Date(record.date);
+                const year = date.getFullYear().toString();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+
+                if (year !== selectedYear) return;
+                if (month < selectedStartMonth || month > selectedEndMonth) return;
+
+                const debit = record.debitAmount || 0;
+
+                if (record.recordType === 'consultation') {
+                    consultations += Math.max(0, (record.paymentAmount || 0) - debit);
+                } else {
+                    installations += Math.max(0, (record.installationPayment || 0));
+                    controls += Math.max(0, (record.paymentAmount || 0));
+                }
+            });
+        });
+
+        const total = installations + controls + consultations;
+
+        return [
+            { name: 'Instalaciones', value: installations, color: '#10B981', percentage: total > 0 ? Math.round(installations / total * 100) : 0 },
+            { name: 'Controles', value: controls, color: '#3B82F6', percentage: total > 0 ? Math.round(controls / total * 100) : 0 },
+            { name: 'Consultas', value: consultations, color: '#F97316', percentage: total > 0 ? Math.round(consultations / total * 100) : 0 }
+        ].filter(item => item.value > 0);
+    }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
+
+    // ============== NEW: Active/Inactive Patients Data ==============
+    const patientActivityData = useMemo(() => {
+        const today = new Date();
+        const threeMonthsAgo = new Date(today);
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        const sixMonthsAgo = new Date(today);
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        let active = 0; // Visited in last 3 months
+        let atRisk = 0; // 3-6 months without visit
+        let inactive = 0; // 6+ months without visit
+        const atRiskPatients: { name: string; lastVisit: string; monthsAgo: number }[] = [];
+
+        filteredPatients.forEach(patient => {
+            if (patient.records.length === 0) {
+                inactive++;
+                return;
+            }
+
+            // Find most recent record
+            const sortedRecords = [...patient.records].sort((a, b) =>
+                new Date(b.date).getTime() - new Date(a.date).getTime()
+            );
+            const lastVisit = new Date(sortedRecords[0].date);
+            const monthsAgo = Math.floor((today.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24 * 30));
+
+            if (lastVisit >= threeMonthsAgo) {
+                active++;
+            } else if (lastVisit >= sixMonthsAgo) {
+                atRisk++;
+                if (atRiskPatients.length < 5) {
+                    atRiskPatients.push({
+                        name: patient.name,
+                        lastVisit: sortedRecords[0].date,
+                        monthsAgo
+                    });
+                }
+            } else {
+                inactive++;
+            }
+        });
+
+        // New patients by month (last 12 months)
+        const newPatientsByMonth: { month: string; count: number }[] = [];
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = `${monthNames[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+
+            const count = filteredPatients.filter(p =>
+                p.startDate && p.startDate.startsWith(monthKey)
+            ).length;
+
+            newPatientsByMonth.push({ month: label, count });
+        }
+
+        return {
+            distribution: [
+                { name: 'Activos', value: active, color: '#10B981' },
+                { name: 'En riesgo', value: atRisk, color: '#F59E0B' },
+                { name: 'Inactivos', value: inactive, color: '#EF4444' }
+            ].filter(item => item.value > 0),
+            atRiskPatients,
+            newPatientsByMonth,
+            totals: { active, atRisk, inactive }
+        };
+    }, [filteredPatients]);
 
     // Summary statistics (Global stats, not affected by chart filters except for monthly earnings display consistency if desired, 
     // but usually summary cards show "Current Month" or "Total All Time". 
@@ -462,6 +616,183 @@ const AdminDashboard: React.FC = () => {
                     ) : (
                         <EmptyState message="No hay datos para el período seleccionado" />
                     )}
+                </ChartCard>
+
+                {/* NEW: Year-over-Year Comparison Chart */}
+                <ChartCard title={`Tendencia Comparativa: ${yearComparisonData.currentYear} vs ${yearComparisonData.previousYear}`}>
+                    {yearComparisonData.data.length > 0 ? (
+                        <>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={yearComparisonData.data}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
+                                    <YAxis tick={{ fontSize: 12 }} stroke="#64748b" />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                        formatter={(value: number, name: string) => [`$${value.toLocaleString()}`, name]}
+                                    />
+                                    <Legend />
+                                    <Line
+                                        type="monotone"
+                                        dataKey={yearComparisonData.currentYear}
+                                        stroke="#3B82F6"
+                                        strokeWidth={3}
+                                        dot={{ fill: '#3B82F6', strokeWidth: 2 }}
+                                        name={`${yearComparisonData.currentYear}`}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey={yearComparisonData.previousYear}
+                                        stroke="#94A3B8"
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        dot={{ fill: '#94A3B8', strokeWidth: 2 }}
+                                        name={`${yearComparisonData.previousYear}`}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                            {/* Growth Indicators */}
+                            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+                                {yearComparisonData.data.map((item, idx) => (
+                                    <div key={idx} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50">
+                                        <span className="text-xs text-slate-500">{item.month}:</span>
+                                        <span className={`text-xs font-bold ${item.growth >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                            {item.growth >= 0 ? '+' : ''}{item.growth}%
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <EmptyState message="No hay datos para comparar" />
+                    )}
+                </ChartCard>
+
+                {/* NEW: Income Distribution Donut Chart */}
+                <ChartCard title="Distribución de Ingresos por Tipo">
+                    {incomeDistribution.length > 0 ? (
+                        <div className="flex flex-col lg:flex-row items-center justify-center gap-8">
+                            <ResponsiveContainer width="100%" height={280}>
+                                <PieChart>
+                                    <Pie
+                                        data={incomeDistribution}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={3}
+                                        dataKey="value"
+                                    >
+                                        {incomeDistribution.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            {/* Legend with values */}
+                            <div className="flex flex-col gap-3 min-w-[200px]">
+                                {incomeDistribution.map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-between gap-4 p-3 rounded-lg bg-slate-50">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                                            <span className="text-sm font-medium text-slate-700">{item.name}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-bold text-slate-800">${item.value.toLocaleString()}</div>
+                                            <div className="text-xs text-slate-500">{item.percentage}%</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <EmptyState message="No hay datos de ingresos para el período" />
+                    )}
+                </ChartCard>
+
+                {/* NEW: Patient Activity Chart */}
+                <ChartCard title="Estado de Pacientes">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Activity Distribution Pie */}
+                        <div>
+                            <h4 className="text-sm font-medium text-slate-600 mb-3">Distribución por Actividad</h4>
+                            {patientActivityData.distribution.length > 0 ? (
+                                <div className="flex items-center gap-4">
+                                    <ResponsiveContainer width="50%" height={180}>
+                                        <PieChart>
+                                            <Pie
+                                                data={patientActivityData.distribution}
+                                                cx="50%"
+                                                cy="50%"
+                                                outerRadius={70}
+                                                dataKey="value"
+                                            >
+                                                {patientActivityData.distribution.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                                            <span className="text-sm text-slate-600">Activos: <span className="font-bold">{patientActivityData.totals.active}</span></span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-amber-500" />
+                                            <span className="text-sm text-slate-600">En riesgo: <span className="font-bold">{patientActivityData.totals.atRisk}</span></span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full bg-red-500" />
+                                            <span className="text-sm text-slate-600">Inactivos: <span className="font-bold">{patientActivityData.totals.inactive}</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <EmptyState message="No hay pacientes" />
+                            )}
+
+                            {/* At Risk Alert */}
+                            {patientActivityData.atRiskPatients.length > 0 && (
+                                <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <AlertTriangle size={16} className="text-amber-600" />
+                                        <span className="text-sm font-medium text-amber-800">Pacientes en riesgo de deserción</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {patientActivityData.atRiskPatients.map((p, idx) => (
+                                            <div key={idx} className="text-xs text-amber-700 flex justify-between">
+                                                <span>{p.name}</span>
+                                                <span className="text-amber-600">{p.monthsAgo} meses sin visita</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* New Patients Trend */}
+                        <div>
+                            <h4 className="text-sm font-medium text-slate-600 mb-3">Nuevos Pacientes (Últimos 12 meses)</h4>
+                            <ResponsiveContainer width="100%" height={200}>
+                                <BarChart data={patientActivityData.newPatientsByMonth}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#64748b" />
+                                    <YAxis tick={{ fontSize: 10 }} stroke="#64748b" allowDecimals={false} />
+                                    <Tooltip
+                                        formatter={(value: number) => [value, 'Nuevos pacientes']}
+                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                                    />
+                                    <Bar dataKey="count" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                 </ChartCard>
             </div>
         </div>
