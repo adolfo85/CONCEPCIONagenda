@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS clinical_records (
     payment_amount NUMERIC(10, 2) DEFAULT 0,
     installation_payment NUMERIC(10, 2) DEFAULT 0,
     debit_amount NUMERIC(10, 2) DEFAULT 0,
+    usd_rate NUMERIC(10, 2), -- Cotización del dólar al momento del pago
     is_installation BOOLEAN DEFAULT FALSE,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
