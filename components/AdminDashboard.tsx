@@ -42,6 +42,9 @@ const AdminDashboard: React.FC = () => {
     // Expanded patient lists state
     const [expandedList, setExpandedList] = useState<'active' | 'atRisk' | 'inactive' | null>(null);
 
+    // Expanded month details state (for monthly earnings chart)
+    const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+
     // Filter only orthodontist dentists
     const orthodontists = useMemo(() => {
         return dentists.filter(d => !d.specialty || d.specialty === 'orthodontics');
@@ -78,17 +81,23 @@ const AdminDashboard: React.FC = () => {
 
     // Calculate monthly earnings and patient counts
     const monthlyData = useMemo(() => {
-        const monthMap = new Map<string, { control: number; installation: number; consultation: number; controlCount: number; consultationCount: number; patients: Set<string> }>();
+        interface PatientDetail {
+            name: string;
+            type: 'control' | 'installation' | 'consultation';
+            amount: number;
+            date: string;
+        }
+        const monthMap = new Map<string, {
+            control: number;
+            installation: number;
+            consultation: number;
+            controlCount: number;
+            consultationCount: number;
+            patients: Set<string>;
+            details: PatientDetail[];
+        }>();
 
         filteredPatients.forEach(patient => {
-            // Calculate installation net factor for proportional debit deduction
-            // REMOVED: User requested that earnings reflect actual payments, not adjusted by debit.
-            // const installationTotal = patient.installationTotal || 0;
-            // const installationDebit = patient.installationDebit || 0;
-            // const installationNetFactor = installationTotal > 0
-            //     ? Math.max(0, (installationTotal - installationDebit) / installationTotal)
-            //     : 1;
-
             patient.records.forEach(record => {
                 const date = new Date(record.date);
                 const year = date.getFullYear().toString();
@@ -100,18 +109,21 @@ const AdminDashboard: React.FC = () => {
                 if (month < selectedStartMonth || month > selectedEndMonth) return;
 
                 if (!monthMap.has(monthKey)) {
-                    monthMap.set(monthKey, { control: 0, installation: 0, consultation: 0, controlCount: 0, consultationCount: 0, patients: new Set() });
+                    monthMap.set(monthKey, {
+                        control: 0,
+                        installation: 0,
+                        consultation: 0,
+                        controlCount: 0,
+                        consultationCount: 0,
+                        patients: new Set(),
+                        details: []
+                    });
                 }
 
                 const data = monthMap.get(monthKey)!;
 
-                // Add control earnings
-                // Add installation earnings (raw payment, no debit deduction)
                 const rawInstallation = (record.installationPayment || 0);
                 const debit = (record.debitAmount || 0);
-
-                // Net earnings for this record = (Control + Installation) - Debit
-                // Logic: Subtract debit from Installation FIRST, then from Control.
 
                 let netControl = (record.paymentAmount || 0);
                 let netInstallation = rawInstallation;
@@ -137,10 +149,19 @@ const AdminDashboard: React.FC = () => {
                 if (isConsultation) {
                     data.consultation += netControl;
                     data.consultationCount++;
+                    if (netControl > 0) {
+                        data.details.push({ name: patient.name, type: 'consultation', amount: netControl, date: record.date });
+                    }
                 } else {
                     data.control += netControl;
                     data.installation += netInstallation;
                     data.controlCount++;
+                    if (netControl > 0) {
+                        data.details.push({ name: patient.name, type: 'control', amount: netControl, date: record.date });
+                    }
+                    if (netInstallation > 0) {
+                        data.details.push({ name: patient.name, type: 'installation', amount: netInstallation, date: record.date });
+                    }
                 }
 
                 data.patients.add(patient.id);
@@ -152,13 +173,15 @@ const AdminDashboard: React.FC = () => {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([month, data]) => ({
                 month: formatMonthLabel(month),
+                monthKey: month,
                 control: data.control,
                 installation: data.installation,
                 consultation: data.consultation,
                 controlCount: data.controlCount,
                 consultationCount: data.consultationCount,
                 total: data.control + data.installation + data.consultation,
-                patients: data.patients.size
+                patients: data.patients.size,
+                details: data.details.sort((a, b) => a.date.localeCompare(b.date))
             }));
     }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
 
@@ -598,6 +621,90 @@ const AdminDashboard: React.FC = () => {
                         </ResponsiveContainer>
                     ) : (
                         <EmptyState message="No hay datos para el período seleccionado" />
+                    )}
+
+                    {/* Monthly Details Breakdown */}
+                    {monthlyData.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-slate-200">
+                            <h4 className="text-sm font-medium text-slate-600 mb-3 flex items-center gap-2">
+                                <span>📋 Detalle por Mes</span>
+                                <span className="text-xs text-slate-400">(haz clic para expandir)</span>
+                            </h4>
+                            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                {monthlyData.map((month, idx) => (
+                                    <div key={idx} className="border border-slate-200 rounded-lg overflow-hidden">
+                                        <button
+                                            onClick={() => setExpandedMonth(expandedMonth === month.monthKey ? null : month.monthKey)}
+                                            className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-sm font-medium text-slate-700">{month.month}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {month.installation > 0 && (
+                                                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                                            Inst: ${month.installation.toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                    {month.control > 0 && (
+                                                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                                            Ctrl: ${month.control.toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                    {month.consultation > 0 && (
+                                                        <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                                                            Cons: ${month.consultation.toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold text-slate-800">${month.total.toLocaleString()}</span>
+                                                {expandedMonth === month.monthKey ?
+                                                    <ChevronUp size={16} className="text-slate-500" /> :
+                                                    <ChevronDown size={16} className="text-slate-500" />
+                                                }
+                                            </div>
+                                        </button>
+                                        {expandedMonth === month.monthKey && month.details.length > 0 && (
+                                            <div className="bg-white max-h-60 overflow-y-auto">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-slate-100 sticky top-0">
+                                                        <tr>
+                                                            <th className="text-left p-2 font-medium text-slate-600">Fecha</th>
+                                                            <th className="text-left p-2 font-medium text-slate-600">Paciente</th>
+                                                            <th className="text-left p-2 font-medium text-slate-600">Tipo</th>
+                                                            <th className="text-right p-2 font-medium text-slate-600">Monto</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {month.details.map((detail, dIdx) => (
+                                                            <tr key={dIdx} className="border-t border-slate-100 hover:bg-slate-50">
+                                                                <td className="p-2 text-slate-500">{detail.date}</td>
+                                                                <td className="p-2 text-slate-700">{detail.name}</td>
+                                                                <td className="p-2">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-xs ${detail.type === 'installation'
+                                                                            ? 'bg-emerald-100 text-emerald-700'
+                                                                            : detail.type === 'consultation'
+                                                                                ? 'bg-orange-100 text-orange-700'
+                                                                                : 'bg-blue-100 text-blue-700'
+                                                                        }`}>
+                                                                        {detail.type === 'installation' ? 'Instalación' :
+                                                                            detail.type === 'consultation' ? 'Consulta' : 'Control'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="p-2 text-right font-medium text-slate-800">
+                                                                    ${detail.amount.toLocaleString()}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
                 </ChartCard>
 
