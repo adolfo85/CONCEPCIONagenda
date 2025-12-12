@@ -821,6 +821,12 @@ const PatientDetail: React.FC = () => {
                       </div>
                     </div>
                   </>
+                ) : isOrthodontics && isConsultationMode ? (
+                  // Orthodontics Consultation - No extra fields, just date, notes, and payment
+                  <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
+                    <span className="text-sm font-medium text-orange-700">Consulta de Ortodoncia</span>
+                    <p className="text-xs text-orange-600 mt-1">Solo requiere fecha, notas clínicas y valor de consulta.</p>
+                  </div>
                 ) : (
                   <>
                     {/* General Dentistry Fields */}
