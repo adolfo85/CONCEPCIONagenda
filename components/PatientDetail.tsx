@@ -60,6 +60,9 @@ const PatientDetail: React.FC = () => {
   // Editing existing record
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
+  // Consultation mode (simplified record without arches)
+  const [isConsultationMode, setIsConsultationMode] = useState(false);
+
   // General Dentistry States
   const [newServiceType, setNewServiceType] = useState<ServiceType>('Consulta');
   const [newServiceInput, setNewServiceInput] = useState<string>('');
@@ -136,21 +139,33 @@ const PatientDetail: React.FC = () => {
     let recordData: Partial<ClinicalRecord>;
 
     if (isOrthodontics) {
-      // Orthodontics record
-      const installAmount = parseFloat(newInstallationPayment) || 0;
-      recordData = {
-        date: newRecordDate,
-        upperArch: newUpperArch,
-        lowerArch: newLowerArch,
-        upperMonths: newUpperMonths,
-        lowerMonths: newLowerMonths,
-        monthsActive: Math.max(newUpperMonths, newLowerMonths),
-        notes: newRecordNotes,
-        paymentAmount: paymentAmount,
-        installationPayment: installAmount,
-        debitAmount: debitAmount,
-        isInstallation: installAmount > 0
-      };
+      if (isConsultationMode) {
+        // Orthodontics consultation (no arches)
+        recordData = {
+          date: newRecordDate,
+          recordType: 'consultation',
+          notes: newRecordNotes,
+          paymentAmount: paymentAmount,
+          debitAmount: debitAmount
+        };
+      } else {
+        // Orthodontics control record
+        const installAmount = parseFloat(newInstallationPayment) || 0;
+        recordData = {
+          date: newRecordDate,
+          recordType: 'control',
+          upperArch: newUpperArch,
+          lowerArch: newLowerArch,
+          upperMonths: newUpperMonths,
+          lowerMonths: newLowerMonths,
+          monthsActive: Math.max(newUpperMonths, newLowerMonths),
+          notes: newRecordNotes,
+          paymentAmount: paymentAmount,
+          installationPayment: installAmount,
+          debitAmount: debitAmount,
+          isInstallation: installAmount > 0
+        };
+      }
     } else {
       // General dentistry record
       // Construct toothDetails based on selected numbers and their specific surfaces
@@ -202,6 +217,7 @@ const PatientDetail: React.FC = () => {
 
   const openNewRecordModal = () => {
     setEditingId(null);
+    setIsConsultationMode(false);
     setNewRecordDate(new Date().toISOString().split('T')[0]);
 
     // Orthodontics fields
@@ -224,8 +240,19 @@ const PatientDetail: React.FC = () => {
     setIsRecordModalOpen(true);
   };
 
+  const openNewConsultationModal = () => {
+    setEditingId(null);
+    setIsConsultationMode(true);
+    setNewRecordDate(new Date().toISOString().split('T')[0]);
+    setNewRecordNotes('');
+    setNewControlPayment('');
+    setNewDebitAmount('');
+    setIsRecordModalOpen(true);
+  };
+
   const openEditRecordModal = (record: ClinicalRecord) => {
     setEditingRecordId(record.id);
+    setIsConsultationMode(record.recordType === 'consultation');
     setNewRecordDate(record.date);
 
     // Orthodontics fields
@@ -346,7 +373,7 @@ const PatientDetail: React.FC = () => {
 
   // Determine specialty
   const isOrthodontics = !dentist?.specialty || dentist.specialty === 'orthodontics';
-  const recordLabel = isOrthodontics ? 'Control de Ortodoncia' : 'Cita o Turno';
+  const recordLabel = isConsultationMode ? 'Consulta' : (isOrthodontics ? 'Control de Ortodoncia' : 'Cita o Turno');
   const addButtonLabel = isOrthodontics ? 'Agregar Control' : 'Agregar Cita';
 
   return (
@@ -492,13 +519,24 @@ const PatientDetail: React.FC = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-slate-800">Historial Clínico</h2>
-          <button
-            onClick={openNewRecordModal}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
-          >
-            <Plus size={18} />
-            {addButtonLabel}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openNewRecordModal}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
+            >
+              <Plus size={18} />
+              {addButtonLabel}
+            </button>
+            {isOrthodontics && (
+              <button
+                onClick={openNewConsultationModal}
+                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
+              >
+                <Plus size={18} />
+                Agregar Consulta
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -708,9 +746,9 @@ const PatientDetail: React.FC = () => {
                   />
                 </div>
 
-                {isOrthodontics ? (
+                {isOrthodontics && !isConsultationMode ? (
                   <>
-                    {/* Orthodontics Fields */}
+                    {/* Orthodontics Fields - Only for Control, not Consultation */}
                     {/* Upper Arch Config */}
                     <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 space-y-2">
                       <div className="flex justify-between items-center">
@@ -899,21 +937,35 @@ const PatientDetail: React.FC = () => {
                 </div>
 
                 {isOrthodontics ? (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={newControlPayment}
-                          onChange={e => setNewControlPayment(e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                        />
-                      </div>
+                  isConsultationMode ? (
+                    // Simplified payment for consultation
+                    <div className="pt-4 border-t border-slate-100">
+                      <label className="block text-sm font-medium text-orange-600 mb-1">Valor Consulta ($)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={newControlPayment}
+                        onChange={e => setNewControlPayment(e.target.value)}
+                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-slate-900"
+                      />
+                    </div>
+                  ) : (
+                    // Standard control payment fields
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={newControlPayment}
+                            onChange={e => setNewControlPayment(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                          />
+                        </div>
 
-                      {isOrthodontics && (
                         <div>
                           <label className="block text-sm font-medium text-emerald-700 mb-1">Abono Instalación ($)</label>
                           <input
@@ -925,30 +977,30 @@ const PatientDetail: React.FC = () => {
                             className="w-full px-3 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
                           />
                         </div>
-                      )}
 
-                      <div>
-                        <label className="block text-sm font-medium text-red-600 mb-1">Débito ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={newDebitAmount}
-                          onChange={e => setNewDebitAmount(e.target.value)}
-                          className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white text-slate-900"
-                        />
-                        <p className="text-[10px] text-red-400 mt-1">Gasto interno (afecta ganancia, no saldo)</p>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 flex gap-3">
-                      {installationBalance > 0 && (
-                        <div className="text-[10px] text-emerald-600 mt-1 text-right w-full">
-                          Deuda: ${(installationBalance - (parseFloat(newInstallationPayment) || 0)).toLocaleString()}
+                        <div>
+                          <label className="block text-sm font-medium text-red-600 mb-1">Débito ($)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={newDebitAmount}
+                            onChange={e => setNewDebitAmount(e.target.value)}
+                            className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white text-slate-900"
+                          />
+                          <p className="text-[10px] text-red-400 mt-1">Gasto interno (afecta ganancia, no saldo)</p>
                         </div>
-                      )}
-                    </div>
-                  </>
+                      </div>
+
+                      <div className="pt-4 flex gap-3">
+                        {installationBalance > 0 && (
+                          <div className="text-[10px] text-emerald-600 mt-1 text-right w-full">
+                            Deuda: ${(installationBalance - (parseFloat(newInstallationPayment) || 0)).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )
                 ) : (
                   <div className="pt-2 border-t border-slate-100">
                     <label className="block text-sm font-medium text-slate-700 mb-1">Pago ($)</label>

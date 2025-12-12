@@ -75,7 +75,7 @@ const AdminDashboard: React.FC = () => {
 
     // Calculate monthly earnings and patient counts
     const monthlyData = useMemo(() => {
-        const monthMap = new Map<string, { control: number; installation: number; patients: Set<string> }>();
+        const monthMap = new Map<string, { control: number; installation: number; consultation: number; controlCount: number; consultationCount: number; patients: Set<string> }>();
 
         filteredPatients.forEach(patient => {
             // Calculate installation net factor for proportional debit deduction
@@ -97,7 +97,7 @@ const AdminDashboard: React.FC = () => {
                 if (month < selectedStartMonth || month > selectedEndMonth) return;
 
                 if (!monthMap.has(monthKey)) {
-                    monthMap.set(monthKey, { control: 0, installation: 0, patients: new Set() });
+                    monthMap.set(monthKey, { control: 0, installation: 0, consultation: 0, controlCount: 0, consultationCount: 0, patients: new Set() });
                 }
 
                 const data = monthMap.get(monthKey)!;
@@ -128,8 +128,17 @@ const AdminDashboard: React.FC = () => {
                     netControl = Math.max(0, netControl - remainingDebit);
                 }
 
-                data.control += netControl;
-                data.installation += netInstallation;
+                // Check if this is a consultation record
+                const isConsultation = record.recordType === 'consultation';
+
+                if (isConsultation) {
+                    data.consultation += netControl;
+                    data.consultationCount++;
+                } else {
+                    data.control += netControl;
+                    data.installation += netInstallation;
+                    data.controlCount++;
+                }
 
                 data.patients.add(patient.id);
             });
@@ -142,7 +151,10 @@ const AdminDashboard: React.FC = () => {
                 month: formatMonthLabel(month),
                 control: data.control,
                 installation: data.installation,
-                total: data.control + data.installation,
+                consultation: data.consultation,
+                controlCount: data.controlCount,
+                consultationCount: data.consultationCount,
+                total: data.control + data.installation + data.consultation,
                 patients: data.patients.size
             }));
     }, [filteredPatients, selectedYear, selectedStartMonth, selectedEndMonth]);
@@ -150,6 +162,14 @@ const AdminDashboard: React.FC = () => {
     // Calculate Period Total
     const periodTotal = useMemo(() => {
         return monthlyData.reduce((sum, item) => sum + item.total, 0);
+    }, [monthlyData]);
+
+    // Calculate Period Counts
+    const periodCounts = useMemo(() => {
+        return monthlyData.reduce((acc, item) => ({
+            controls: acc.controls + item.controlCount,
+            consultations: acc.consultations + item.consultationCount
+        }), { controls: 0, consultations: 0 });
     }, [monthlyData]);
 
     // Summary statistics (Global stats, not affected by chart filters except for monthly earnings display consistency if desired, 
@@ -364,9 +384,21 @@ const AdminDashboard: React.FC = () => {
                         </div>
 
                         {/* Period Total Display */}
-                        <div className="flex items-center gap-2 bg-emerald-100 px-4 py-2 rounded-lg border border-emerald-200">
-                            <span className="text-sm font-semibold text-emerald-800">Total Período:</span>
-                            <span className="text-lg font-bold text-emerald-700">${periodTotal.toLocaleString()}</span>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 bg-emerald-100 px-4 py-2 rounded-lg border border-emerald-200">
+                                <span className="text-sm font-semibold text-emerald-800">Total Período:</span>
+                                <span className="text-lg font-bold text-emerald-700">${periodTotal.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-3 bg-slate-100 px-4 py-2 rounded-lg border border-slate-200">
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                    <span className="text-sm text-slate-600">{periodCounts.controls} <span className="text-xs">controles</span></span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                                    <span className="text-sm text-slate-600">{periodCounts.consultations} <span className="text-xs">consultas</span></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -403,6 +435,7 @@ const AdminDashboard: React.FC = () => {
                                     />
                                 )}
                                 <Bar dataKey="installation" name="Instalación" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
+                                <Bar dataKey="consultation" name="Consultas" stackId="a" fill="#F97316" radius={[0, 0, 0, 0]} />
                                 <Bar dataKey="control" name="Controles" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -438,6 +471,11 @@ const AdminDashboard: React.FC = () => {
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         const total = payload.reduce((sum: number, entry: any) => sum + (entry.value || 0), 0);
+        // Get counts from the first payload's data
+        const dataItem = payload[0]?.payload;
+        const controlCount = dataItem?.controlCount || 0;
+        const consultationCount = dataItem?.consultationCount || 0;
+
         return (
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-lg">
                 <p className="text-sm font-bold text-slate-800 mb-2">{label}</p>
@@ -452,6 +490,17 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                     <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between gap-4">
                         <span className="text-sm font-bold text-slate-800">Total:</span>
                         <span className="text-sm font-bold text-slate-800">${total.toLocaleString()}</span>
+                    </div>
+                </div>
+                {/* Counts section */}
+                <div className="pt-2 mt-2 border-t border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="text-blue-600">Controles realizados:</span>
+                        <span className="font-bold text-blue-700">{controlCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                        <span className="text-orange-600">Consultas realizadas:</span>
+                        <span className="font-bold text-orange-700">{consultationCount}</span>
                     </div>
                 </div>
             </div>
