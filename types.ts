@@ -15,7 +15,7 @@ export interface ToothDetail {
 export interface ClinicalRecord {
   id: string;
   date: string;
-  recordType?: 'control' | 'consultation'; // undefined = 'control' for backward compatibility
+  recordType?: 'control' | 'consultation' | 'aligner'; // undefined = 'control' for backward compatibility
 
   // Orthodontics fields
   upperArch?: string;

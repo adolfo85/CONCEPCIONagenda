@@ -101,7 +101,7 @@ const AdminDashboard: React.FC = () => {
     const monthlyData = useMemo(() => {
         interface PatientDetail {
             name: string;
-            type: 'control' | 'installation' | 'consultation';
+            type: 'control' | 'installation' | 'consultation' | 'aligner';
             amount: number;
             date: string;
         }
@@ -196,7 +196,7 @@ const AdminDashboard: React.FC = () => {
                     if (finalControl > 0) {
                         data.details.push({
                             name: patient.name,
-                            type: 'control',
+                            type: record.recordType === 'aligner' ? 'aligner' : 'control',
                             amount: finalControl,
                             date: record.date
                         });
@@ -789,10 +789,13 @@ const AdminDashboard: React.FC = () => {
                                                                         ? 'bg-emerald-100 text-emerald-700'
                                                                         : detail.type === 'consultation'
                                                                             ? 'bg-orange-100 text-orange-700'
-                                                                            : 'bg-blue-100 text-blue-700'
+                                                                            : detail.type === 'aligner'
+                                                                                ? 'bg-purple-100 text-purple-700'
+                                                                                : 'bg-blue-100 text-blue-700'
                                                                         }`}>
                                                                         {detail.type === 'installation' ? 'Instalación' :
-                                                                            detail.type === 'consultation' ? 'Consulta' : 'Control'}
+                                                                            detail.type === 'consultation' ? 'Consulta' :
+                                                                                detail.type === 'aligner' ? 'Control/cambio de alineador' : 'Control'}
                                                                     </span>
                                                                 </td>
                                                                 <td className="p-2 text-right font-medium text-slate-800">

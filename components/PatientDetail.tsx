@@ -63,6 +63,10 @@ const PatientDetail: React.FC = () => {
 
   // Consultation mode (simplified record without arches)
   const [isConsultationMode, setIsConsultationMode] = useState(false);
+  // Aligner mode (new feature)
+  const [isAlignerMode, setIsAlignerMode] = useState(false);
+  const [newUpperAligner, setNewUpperAligner] = useState('');
+  const [newLowerAligner, setNewLowerAligner] = useState('');
 
   // General Dentistry States
   const [newServiceType, setNewServiceType] = useState<ServiceType>('Consulta');
@@ -160,14 +164,19 @@ const PatientDetail: React.FC = () => {
     } else if (isOrthodontics) {
       // Orthodontics record
       const installAmount = parseFloat(newInstallationPayment) || 0;
+
+      // Determine record type
+      let type: 'control' | 'aligner' = 'control';
+      if (isAlignerMode) type = 'aligner';
+
       recordData = {
         date: newRecordDate,
-        recordType: 'control',
-        upperArch: newUpperArch,
-        lowerArch: newLowerArch,
-        upperMonths: newUpperMonths,
-        lowerMonths: newLowerMonths,
-        monthsActive: Math.max(newUpperMonths, newLowerMonths),
+        recordType: type,
+        upperArch: isAlignerMode ? newUpperAligner : newUpperArch,
+        lowerArch: isAlignerMode ? newLowerAligner : newLowerArch,
+        upperMonths: isAlignerMode ? undefined : newUpperMonths,
+        lowerMonths: isAlignerMode ? undefined : newLowerMonths,
+        monthsActive: isAlignerMode ? undefined : Math.max(newUpperMonths, newLowerMonths),
         notes: newRecordNotes,
         paymentAmount: paymentAmount,
         installationPayment: installAmount,
@@ -228,11 +237,14 @@ const PatientDetail: React.FC = () => {
   const openNewRecordModal = () => {
     setEditingId(null);
     setIsConsultationMode(false);
+    setIsAlignerMode(false);
     setNewRecordDate(new Date().toISOString().split('T')[0]);
 
     // Orthodontics fields
     setNewUpperArch(ARCH_WIRES[0]);
     setNewLowerArch(ARCH_WIRES[0]);
+    setNewUpperAligner('');
+    setNewLowerAligner('');
     setNewUpperMonths(1);
     setNewLowerMonths(1);
 
@@ -253,6 +265,7 @@ const PatientDetail: React.FC = () => {
   const openNewConsultationModal = () => {
     setEditingId(null);
     setIsConsultationMode(true);
+    setIsAlignerMode(false);
     setNewRecordDate(new Date().toISOString().split('T')[0]);
     setNewRecordNotes('');
     setNewControlPayment('');
@@ -260,14 +273,33 @@ const PatientDetail: React.FC = () => {
     setIsRecordModalOpen(true);
   };
 
+  const openNewAlignerModal = () => {
+    setEditingId(null);
+    setIsConsultationMode(false);
+    setIsAlignerMode(true);
+    setNewRecordDate(new Date().toISOString().split('T')[0]);
+
+    setNewUpperAligner('');
+    setNewLowerAligner('');
+
+    setNewRecordNotes('');
+    setNewControlPayment('');
+    setNewInstallationPayment('');
+    setNewDebitAmount('');
+    setIsRecordModalOpen(true);
+  };
+
   const openEditRecordModal = (record: ClinicalRecord) => {
     setEditingRecordId(record.id);
     setIsConsultationMode(record.recordType === 'consultation');
+    setIsAlignerMode(record.recordType === 'aligner');
     setNewRecordDate(record.date);
 
     // Orthodontics fields
     setNewUpperArch((record.upperArch as ArchWireType) || (record as any).archWire || ARCH_WIRES[0]);
     setNewLowerArch((record.lowerArch as ArchWireType) || (record as any).archWire || ARCH_WIRES[0]);
+    setNewUpperAligner(record.recordType === 'aligner' ? (record.upperArch || '') : '');
+    setNewLowerAligner(record.recordType === 'aligner' ? (record.lowerArch || '') : '');
     setNewUpperMonths(record.upperMonths !== undefined ? record.upperMonths : (record.monthsActive || 1));
     setNewLowerMonths(record.lowerMonths !== undefined ? record.lowerMonths : (record.monthsActive || 1));
 
@@ -383,7 +415,7 @@ const PatientDetail: React.FC = () => {
 
   // Determine specialty
   const isOrthodontics = !dentist?.specialty || dentist.specialty === 'orthodontics';
-  const recordLabel = isConsultationMode ? 'Consulta' : (isOrthodontics ? 'Control de Ortodoncia' : 'Cita o Turno');
+  const recordLabel = isConsultationMode ? 'Consulta' : (isAlignerMode ? 'Control Alineador' : (isOrthodontics ? 'Control de Ortodoncia' : 'Cita o Turno'));
   const addButtonLabel = isOrthodontics ? 'Agregar Control' : 'Agregar Cita';
 
   return (
@@ -538,13 +570,22 @@ const PatientDetail: React.FC = () => {
               {addButtonLabel}
             </button>
             {isOrthodontics && (
-              <button
-                onClick={openNewConsultationModal}
-                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
-              >
-                <Plus size={18} />
-                Agregar Consulta
-              </button>
+              <>
+                <button
+                  onClick={openNewAlignerModal}
+                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
+                >
+                  <Plus size={18} />
+                  Control Alineador
+                </button>
+                <button
+                  onClick={openNewConsultationModal}
+                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg shadow-sm transition-transform active:scale-95"
+                >
+                  <Plus size={18} />
+                  Agregar Consulta
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -612,18 +653,22 @@ const PatientDetail: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-6 py-4 text-slate-700 text-center align-top">
-                              <div className="flex flex-col gap-2 items-center">
-                                <div className="h-6 flex items-center">
-                                  <span className="text-xs font-mono bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200">
-                                    {record.upperMonths ?? record.monthsActive}
-                                  </span>
+                              {record.recordType === 'aligner' ? (
+                                <span className="text-slate-300">-</span>
+                              ) : (
+                                <div className="flex flex-col gap-2 items-center">
+                                  <div className="h-6 flex items-center">
+                                    <span className="text-xs font-mono bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200">
+                                      {record.upperMonths ?? record.monthsActive}
+                                    </span>
+                                  </div>
+                                  <div className="h-6 flex items-center">
+                                    <span className="text-xs font-mono bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200">
+                                      {record.lowerMonths ?? record.monthsActive}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="h-6 flex items-center">
-                                  <span className="text-xs font-mono bg-slate-100 rounded px-1.5 py-0.5 border border-slate-200">
-                                    {record.lowerMonths ?? record.monthsActive}
-                                  </span>
-                                </div>
-                              </div>
+                              )}
                             </td>
                           </>
                         ) : (
@@ -737,363 +782,391 @@ const PatientDetail: React.FC = () => {
             </table>
           </div>
         </div>
-      </div>
 
-      {/* Add/Edit Record Modal */}
-      {isRecordModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 flex-shrink-0">
-              <h3 className="text-lg font-bold text-slate-800">
-                {editingRecordId ? `Editar ${recordLabel}` : `Nuevo ${recordLabel}`}
-              </h3>
-              <button onClick={closeRecordModal} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
-            </div>
+        {/* Add/Edit Record Modal */}
+        {isRecordModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+              <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 flex-shrink-0">
+                <h3 className="text-lg font-bold text-slate-800">
+                  {editingRecordId ? `Editar ${recordLabel}` : `Nuevo ${recordLabel}`}
+                </h3>
+                <button onClick={closeRecordModal} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+              </div>
 
-            <form onSubmit={handleSaveRecord} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-6 space-y-5 overflow-y-auto flex-1">
+              <form onSubmit={handleSaveRecord} className="flex flex-col flex-1 overflow-hidden">
+                <div className="p-6 space-y-5 overflow-y-auto flex-1">
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
-                  <input
-                    type="date"
-                    required
-                    value={newRecordDate}
-                    onChange={e => setNewRecordDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                  />
-                </div>
-
-                {isOrthodontics && !isConsultationMode ? (
-                  <>
-                    {/* Orthodontics Fields - Only for Control, not Consultation */}
-                    {/* Upper Arch Config */}
-                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-blue-600 uppercase">Maxilar Superior</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="block text-xs text-slate-500 mb-1">Arco</label>
-                          <select
-                            value={newUpperArch}
-                            onChange={e => setNewUpperArch(e.target.value as ArchWireType)}
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white text-sm"
-                          >
-                            {ARCH_WIRES.map(wire => (
-                              <option key={`u-${wire}`} value={wire}>{wire}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="w-24">
-                          <label className="block text-xs text-slate-500 mb-1">Meses</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            value={newUpperMonths}
-                            onChange={e => setNewUpperMonths(parseFloat(e.target.value))}
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Lower Arch Config */}
-                    <div className="p-3 bg-teal-50 rounded-lg border border-teal-100 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-teal-600 uppercase">Maxilar Inferior</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="block text-xs text-slate-500 mb-1">Arco</label>
-                          <select
-                            value={newLowerArch}
-                            onChange={e => setNewLowerArch(e.target.value as ArchWireType)}
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-teal-500 outline-none bg-white text-sm"
-                          >
-                            {ARCH_WIRES.map(wire => (
-                              <option key={`l-${wire}`} value={wire}>{wire}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="w-24">
-                          <label className="block text-xs text-slate-500 mb-1">Meses</label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            value={newLowerMonths}
-                            onChange={e => setNewLowerMonths(parseFloat(e.target.value))}
-                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-teal-500 outline-none bg-white text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : isOrthodontics && isConsultationMode ? (
-                  // Orthodontics Consultation - No extra fields, just date, notes, and payment
-                  <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
-                    <span className="text-sm font-medium text-orange-700">Consulta de Ortodoncia</span>
-                    <p className="text-xs text-orange-600 mt-1">Solo requiere fecha, notas clínicas y valor de consulta.</p>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+                    <input
+                      type="date"
+                      required
+                      value={newRecordDate}
+                      onChange={e => setNewRecordDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                    />
                   </div>
-                ) : (
-                  <>
-                    {/* General Dentistry Fields */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Prestación</label>
-                      <select
-                        value={newServiceType}
-                        onChange={e => setNewServiceType(e.target.value as ServiceType)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
-                      >
-                        {serviceTypes.map(type => (
-                          <option key={type} value={type}>{type}</option>
-                        ))}
-                      </select>
-                      {/* Add new prestation UI */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <input
-                          type="text"
-                          placeholder="Nueva prestación"
-                          className="flex-1 px-3 py-1 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
-                          value={newServiceInput}
-                          onChange={e => setNewServiceInput(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const trimmed = newServiceInput.trim();
-                            if (trimmed && !serviceTypes.includes(trimmed as ServiceType)) {
-                              addServiceTypeMutation.mutate(trimmed);
-                              setNewServiceInput('');
-                              setNewServiceType(trimmed as ServiceType);
-                            }
-                          }}
-                          className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                        >
-                          +
-                        </button>
+
+                  {isOrthodontics && !isConsultationMode ? (
+                    isAlignerMode ? (
+                      <div className="p-3 bg-purple-50 rounded-lg border border-purple-100 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-purple-600 uppercase">Alineadores</span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Superior</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: Alineador 1"
+                            value={newUpperAligner}
+                            onChange={e => setNewUpperAligner(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Inferior</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: Alineador 1"
+                            value={newLowerAligner}
+                            onChange={e => setNewLowerAligner(e.target.value)}
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-purple-500 outline-none bg-white text-sm"
+                          />
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Tooth Numbers Multi-Select */}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Pieza(s) dentaria(s)</label>
-                      <select
-                        multiple
-                        value={newToothNumbers}
-                        onChange={e => setNewToothNumbers(Array.from((e.target as HTMLSelectElement).selectedOptions, opt => opt.value))}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900 min-h-[120px]"
-                      >
-                        {TOOTH_NUMBERS.map(num => (
-                          <option key={num} value={num}>Pieza {num}</option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-slate-500 mt-1">Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples piezas</p>
-                    </div>
-
-                    {/* Tooth Surfaces - Per Tooth */}
-                    {(newServiceType === 'Restauración simple' || newServiceType === 'Restauración compuesta') && newToothNumbers.length > 0 && (
-                      <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                        <label className="block text-sm font-medium text-slate-700">Caras por pieza</label>
-                        {newToothNumbers.map(toothNum => {
-                          const currentDetails = newToothDetails.find(d => d.number === toothNum);
-                          const currentSurfaces = currentDetails ? currentDetails.surfaces : [];
-
-                          return (
-                            <div key={toothNum} className="flex flex-col sm:flex-row sm:items-center gap-2 pb-2 border-b border-slate-200 last:border-0 last:pb-0">
-                              <span className="text-sm font-bold text-slate-800 w-16">Pieza {toothNum}:</span>
-                              <div className="flex gap-3 flex-wrap">
-                                {TOOTH_SURFACES.map(surface => (
-                                  <label key={`${toothNum}-${surface}`} className="flex items-center gap-1.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={currentSurfaces.includes(surface)}
-                                      onChange={e => {
-                                        const isChecked = e.target.checked;
-                                        setNewToothDetails(prev => {
-                                          // Find if we already have an entry for this tooth
-                                          const existingIdx = prev.findIndex(p => p.number === toothNum);
-                                          let newDetails = [...prev];
-
-                                          if (existingIdx >= 0) {
-                                            const existing = newDetails[existingIdx];
-                                            let updatedSurfaces = existing.surfaces;
-                                            if (isChecked) {
-                                              updatedSurfaces = [...updatedSurfaces, surface];
-                                            } else {
-                                              updatedSurfaces = updatedSurfaces.filter(s => s !== surface);
-                                            }
-                                            newDetails[existingIdx] = { ...existing, surfaces: updatedSurfaces };
-                                          } else {
-                                            // Create new entry
-                                            if (isChecked) {
-                                              newDetails.push({ number: toothNum, surfaces: [surface] });
-                                            }
-                                          }
-                                          return newDetails;
-                                        });
-                                      }}
-                                      className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
-                                    />
-                                    <span className="text-xs text-slate-700 font-medium">{surface}</span>
-                                  </label>
+                    ) : (
+                      <>
+                        {/* Upper Arch Config */}
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-blue-600 uppercase">Maxilar Superior</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-xs text-slate-500 mb-1">Arco</label>
+                              <select
+                                value={newUpperArch}
+                                onChange={e => setNewUpperArch(e.target.value as ArchWireType)}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white text-sm"
+                              >
+                                {ARCH_WIRES.map(wire => (
+                                  <option key={`u-${wire}`} value={wire}>{wire}</option>
                                 ))}
-                              </div>
+                              </select>
                             </div>
-                          );
-                        })}
+                            <div className="w-24">
+                              <label className="block text-xs text-slate-500 mb-1">Meses</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={newUpperMonths}
+                                onChange={e => setNewUpperMonths(parseFloat(e.target.value))}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 outline-none bg-white text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Lower Arch Config */}
+                        <div className="p-3 bg-teal-50 rounded-lg border border-teal-100 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-teal-600 uppercase">Maxilar Inferior</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="block text-xs text-slate-500 mb-1">Arco</label>
+                              <select
+                                value={newLowerArch}
+                                onChange={e => setNewLowerArch(e.target.value as ArchWireType)}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-teal-500 outline-none bg-white text-sm"
+                              >
+                                {ARCH_WIRES.map(wire => (
+                                  <option key={`l-${wire}`} value={wire}>{wire}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-24">
+                              <label className="block text-xs text-slate-500 mb-1">Meses</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={newLowerMonths}
+                                onChange={e => setNewLowerMonths(parseFloat(e.target.value))}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-teal-500 outline-none bg-white text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  ) : isOrthodontics && isConsultationMode ? (
+                    // Orthodontics Consultation
+                    <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
+                      <span className="text-sm font-medium text-orange-700">Consulta de Ortodoncia</span>
+                      <p className="text-xs text-orange-600 mt-1">Solo requiere fecha, notas clínicas y valor de consulta.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* General Dentistry Fields */}
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Prestación</label>
+                        <select
+                          value={newServiceType}
+                          onChange={e => setNewServiceType(e.target.value as ServiceType)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
+                        >
+                          {serviceTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                        {/* Add new prestation UI */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Nueva prestación"
+                            className="flex-1 px-3 py-1 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
+                            value={newServiceInput}
+                            onChange={e => setNewServiceInput(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = newServiceInput.trim();
+                              if (trimmed && !serviceTypes.includes(trimmed as ServiceType)) {
+                                addServiceTypeMutation.mutate(trimmed);
+                                setNewServiceInput('');
+                                setNewServiceType(trimmed as ServiceType);
+                              }
+                            }}
+                            className="px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </>
-                )}
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Notas Clínicas</label>
-                  <textarea
-                    rows={3}
-                    value={newRecordNotes}
-                    onChange={e => setNewRecordNotes(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-white text-slate-900"
-                    placeholder="Observaciones..."
-                  />
-                </div>
+                      {/* Tooth Numbers Multi-Select */}
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Pieza(s) dentaria(s)</label>
+                        <select
+                          multiple
+                          value={newToothNumbers}
+                          onChange={e => setNewToothNumbers(Array.from((e.target as HTMLSelectElement).selectedOptions, opt => opt.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900 min-h-[120px]"
+                        >
+                          {TOOTH_NUMBERS.map(num => (
+                            <option key={num} value={num}>Pieza {num}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-slate-500 mt-1">Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples piezas</p>
+                      </div>
 
-                {isOrthodontics ? (
-                  isConsultationMode ? (
-                    // Simplified payment for consultation
-                    <div className="pt-4 border-t border-slate-100">
-                      <label className="block text-sm font-medium text-orange-600 mb-1">Valor Consulta ($)</label>
+                      {/* Tooth Surfaces - Per Tooth */}
+                      {(newServiceType === 'Restauración simple' || newServiceType === 'Restauración compuesta') && newToothNumbers.length > 0 && (
+                        <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                          <label className="block text-sm font-medium text-slate-700">Caras por pieza</label>
+                          {newToothNumbers.map(toothNum => {
+                            const currentDetails = newToothDetails.find(d => d.number === toothNum);
+                            const currentSurfaces = currentDetails ? currentDetails.surfaces : [];
+
+                            return (
+                              <div key={toothNum} className="flex flex-col sm:flex-row sm:items-center gap-2 pb-2 border-b border-slate-200 last:border-0 last:pb-0">
+                                <span className="text-sm font-bold text-slate-800 w-16">Pieza {toothNum}:</span>
+                                <div className="flex gap-3 flex-wrap">
+                                  {TOOTH_SURFACES.map(surface => (
+                                    <label key={`${toothNum}-${surface}`} className="flex items-center gap-1.5 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={currentSurfaces.includes(surface)}
+                                        onChange={e => {
+                                          const isChecked = e.target.checked;
+                                          setNewToothDetails(prev => {
+                                            const existingIdx = prev.findIndex(p => p.number === toothNum);
+                                            let newDetails = [...prev];
+
+                                            if (existingIdx >= 0) {
+                                              const existing = newDetails[existingIdx];
+                                              let updatedSurfaces = existing.surfaces;
+                                              if (isChecked) {
+                                                updatedSurfaces = [...updatedSurfaces, surface];
+                                              } else {
+                                                updatedSurfaces = updatedSurfaces.filter(s => s !== surface);
+                                              }
+                                              newDetails[existingIdx] = { ...existing, surfaces: updatedSurfaces };
+                                            } else {
+                                              if (isChecked) {
+                                                newDetails.push({ number: toothNum, surfaces: [surface] });
+                                              }
+                                            }
+                                            return newDetails;
+                                          });
+                                        }}
+                                        className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
+                                      />
+                                      <span className="text-xs text-slate-700 font-medium">{surface}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Notas Clínicas</label>
+                    <textarea
+                      rows={3}
+                      value={newRecordNotes}
+                      onChange={e => setNewRecordNotes(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-white text-slate-900"
+                      placeholder="Observaciones..."
+                    />
+                  </div>
+
+                  {isOrthodontics ? (
+                    isConsultationMode ? (
+                      // Simplified payment for consultation
+                      <div className="pt-4 border-t border-slate-100">
+                        <label className="block text-sm font-medium text-orange-600 mb-1">Valor Consulta ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={newControlPayment}
+                          onChange={e => setNewControlPayment(e.target.value)}
+                          className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-slate-900"
+                        />
+                      </div>
+                    ) : (
+                      // Standard control payment fields
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={newControlPayment}
+                              onChange={e => setNewControlPayment(e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-emerald-700 mb-1">Abono Instalación ($)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={newInstallationPayment}
+                              onChange={e => setNewInstallationPayment(e.target.value)}
+                              className="w-full px-3 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-red-600 mb-1">Débito ($)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={newDebitAmount}
+                              onChange={e => setNewDebitAmount(e.target.value)}
+                              className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white text-slate-900"
+                            />
+                            <p className="text-[10px] text-red-400 mt-1">Gasto interno (afecta ganancia, no saldo)</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                          {installationBalance > 0 && (
+                            <div className="text-[10px] text-emerald-600 mt-1 text-right w-full">
+                              Deuda: ${(installationBalance - (parseFloat(newInstallationPayment) || 0)).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )
+                  ) : (
+                    <div className="pt-2 border-t border-slate-100">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Pago ($)</label>
                       <input
                         type="number"
                         min="0"
                         placeholder="0"
                         value={newControlPayment}
                         onChange={e => setNewControlPayment(e.target.value)}
-                        className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-slate-900"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
                       />
                     </div>
-                  ) : (
-                    // Standard control payment fields
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Pago Control ($)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={newControlPayment}
-                            onChange={e => setNewControlPayment(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                          />
-                        </div>
+                  )}
 
-                        <div>
-                          <label className="block text-sm font-medium text-emerald-700 mb-1">Abono Instalación ($)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={newInstallationPayment}
-                            onChange={e => setNewInstallationPayment(e.target.value)}
-                            className="w-full px-3 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
-                          />
-                        </div>
+                </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-red-600 mb-1">Débito ($)</label>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={newDebitAmount}
-                            onChange={e => setNewDebitAmount(e.target.value)}
-                            className="w-full px-3 py-2 border border-red-200 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-white text-slate-900"
-                          />
-                          <p className="text-[10px] text-red-400 mt-1">Gasto interno (afecta ganancia, no saldo)</p>
-                        </div>
-                      </div>
-
-                      <div className="pt-4 flex gap-3">
-                        {installationBalance > 0 && (
-                          <div className="text-[10px] text-emerald-600 mt-1 text-right w-full">
-                            Deuda: ${(installationBalance - (parseFloat(newInstallationPayment) || 0)).toLocaleString()}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )
-                ) : (
-                  <div className="pt-2 border-t border-slate-100">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Pago ($)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={newControlPayment}
-                      onChange={e => setNewControlPayment(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-slate-900"
-                    />
-                  </div>
-                )}
-
-              </div>
-
-              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={closeRecordModal}
-                  className="flex-1 px-4 py-2 text-slate-700 bg-white hover:bg-slate-100 rounded-lg font-medium border border-slate-300"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm flex justify-center items-center gap-2"
-                >
-                  <Save size={18} />
-                  Guardar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 bg-red-50">
-              <h3 className="text-lg font-bold text-red-800">Confirmar Eliminación</h3>
-            </div>
-
-            <div className="px-6 py-6">
-              <p className="text-slate-700">¿Estás seguro de que deseas borrar este control del historial?</p>
-              <p className="text-sm text-slate-500 mt-2">Esta acción no se puede deshacer.</p>
-            </div>
-
-            <div className="px-6 py-4 bg-slate-50 flex gap-3">
-              <button
-                onClick={cancelDeleteRecord}
-                className="flex-1 px-4 py-2 text-slate-700 bg-white hover:bg-slate-100 rounded-lg font-medium border border-slate-300"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmDeleteRecord}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium shadow-sm"
-              >
-                Eliminar
-              </button>
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={closeRecordModal}
+                    className="flex-1 px-4 py-2 text-slate-700 bg-white hover:bg-slate-100 rounded-lg font-medium border border-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm flex justify-center items-center gap-2"
+                  >
+                    <Save size={18} />
+                    Guardar
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {
+          showDeleteConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="px-6 py-4 border-b border-slate-100 bg-red-50">
+                  <h3 className="text-lg font-bold text-red-800">Confirmar Eliminación</h3>
+                </div>
+
+                <div className="px-6 py-6">
+                  <p className="text-slate-700">¿Estás seguro de que deseas borrar este control del historial?</p>
+                  <p className="text-sm text-slate-500 mt-2">Esta acción no se puede deshacer.</p>
+                </div>
+
+                <div className="px-6 py-4 bg-slate-50 flex gap-3">
+                  <button
+                    onClick={cancelDeleteRecord}
+                    className="flex-1 px-4 py-2 text-slate-700 bg-white hover:bg-slate-100 rounded-lg font-medium border border-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDeleteRecord}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium shadow-sm"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+      </div >
+      );
 };
 
-export default PatientDetail;
+      export default PatientDetail;
